@@ -195,13 +195,14 @@ def make_lags(df, cols, lags):
 		print("lag %d created" %lag)
 	return(df)
 
-cols_to_lag = ['item_cnt_month', 
-			   'item_price', 
-			   'revenues',
-			   'item_price_diff',
-			   'item_on_sale',
-			   'item_price_diff_sign']
 lags = [1, 3, 12]
+cols_to_lag = [
+	'item_cnt_month', 
+	'item_price', 
+	'revenues',
+	'item_price_diff',
+	'item_on_sale',
+	'item_price_diff_sign']
 df = make_lags(df, cols_to_lag, lags)
 
 # remove periods for which lags cannot be computed (date_block_num starts at 0)
