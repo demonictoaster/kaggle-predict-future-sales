@@ -7,11 +7,20 @@ from xgboost import plot_importance
 import os
 import time
 
+"""
+Fit XGBoost model
+
+TODO: 
+- tune hyperparameters
+- try different early stopping methods
+- save best model for ensembling 
+"""
+
 ###################
 # setup
 ###################
 
-DEBUG = True  # if true take only subset of data to speed up computations
+DEBUG = False  # if true take only subset of data to speed up computations
 
 pd.set_option('display.max_columns', 20)
 pd.set_option('display.max_rows', 20)
