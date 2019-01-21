@@ -1,9 +1,9 @@
+import os
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-import os
 
 # params
 pd.set_option('display.max_columns', 20)

@@ -1,10 +1,12 @@
+import itertools
+import os
+import time
+
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-import itertools
-import os
-import time
+from utils import *
 
 """
 NOTE:
@@ -51,10 +53,9 @@ TODO
 
 DEBUG = True  # if true take only subset of data to speed up computations
 
+ts = time.time()
 pd.set_option('display.max_columns', 20)
 pd.set_option('display.max_rows', 20)
-
-ts = time.time()
 
 # paths
 ROOT = os.path.abspath('')
@@ -77,7 +78,7 @@ df.rename(columns={'item_cnt_day':'item_cnt_month'}, inplace=True)
 # shrink data size for debugging
 if DEBUG==True:
 	df = df.sample(frac=0.01, random_state=12)
-	test = test.sample(n=50, random_state=12)
+	test = test.sample(n=10, random_state=12)
 
 ###################
 # data prep
@@ -175,11 +176,32 @@ df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(int
 # mean over previous months (e.g. over 1, 2, 3 previous months)
 # for sales, item_cnt, etc. 
 
-# mean encoding (do not use validation data!	)
-
 # can bin some features and treate them as categorical
 
 # lagged values of total shop or total item sales
+
+###################
+# mean encoding
+###################
+
+# NOTE: should be calculated on train data only (exclude validation set)
+# TODO: recalculate on full dataset for final model
+
+cols = [
+	'date_block_num',
+	'shop_id',
+	'item_id',
+	'item_category_id',
+	'city_enc',
+	'year',
+	'month',
+	'item_on_sale'] # columns to mean-encode
+target = 'item_cnt_month'
+train_idx = df['date_block_num'].isin(np.arange(0, 33))
+
+df = mean_encoding(df, cols, target, train_idx)  # no regularization
+
+
 
 ###################
 # create lags

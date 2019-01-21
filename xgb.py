@@ -1,11 +1,11 @@
+import os
+import time
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from xgboost import XGBRegressor
 from xgboost import plot_importance
-
-import os
-import time
 
 """
 Fit XGBoost model
@@ -68,6 +68,7 @@ X_test = df.loc[df['date_block_num'] == 34].drop(cols_to_drop, axis=1)
 # XGBoost 
 ###################
 
+# define model
 model = XGBRegressor(
 	max_depth=6,
     n_estimators=100,
@@ -77,6 +78,7 @@ model = XGBRegressor(
     eta=0.3,    
     seed=42)
 
+# train
 ts = time.time()
 model.fit(
     X_train, 
