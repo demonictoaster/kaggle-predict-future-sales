@@ -6,6 +6,7 @@ from sklearn.model_selection import KFold
 
 A bunch of functions used for feature generation:
 
+ - make_lags(): create lags
  - mean_encoding(): mean encoding without regularization
  - mean_encoding_kold(): mean encoding over k-folds
 

@@ -10,7 +10,6 @@ from scipy import stats
 
 from utils import *
 
-
 """
 NOTE:
 - no feature in test since forecasting -> need to use lags for all variables
@@ -18,6 +17,8 @@ NOTE:
 - test set is simply all unique shop_id/item_id combinations
 
 TODO:
+- clean lag creation -- call function on the go when it is needed
+- mean encoding should be done by month -- adjust functions
 - item_price_diff and item_price_diff_sign seem weird - check distribution
 - check if nulls in lags when running with whole dataset
 - check correl of mean-encoded feature with target
@@ -28,13 +29,17 @@ TODO:
 - create trend features (e.g. via moving averages)
 - average sales in past month, number of sales in same month previous year
 - try using only pairs present in test data rather than all pair for each month
+- Apart from item/shop pair lags you can try adding lagged values of total shop or 
+  total item sales (which are essentially mean-encodings). 
+  All of that is going to add some new information.
 """
 
 ###################
 # setup
 ###################
 
-DEBUG = False  # if true take only subset of data to speed up computations
+DEBUG = False  		   # if true take only subset of data to speed up computations
+MEAN_ENCODING = False  # apply mean enconding (mean calculated over full train set)
 
 ts = time.time()
 pd.set_option('display.max_columns', 20)
@@ -61,7 +66,7 @@ df.rename(columns={'item_cnt_day':'item_cnt_month'}, inplace=True)
 # shrink data size for debugging
 if DEBUG==True:
 	df = df.sample(frac=0.01, random_state=12)
-	test = test.sample(n=10, random_state=12)
+	test = test.sample(n=3, random_state=12)
 
 ###################
 # data prep
@@ -122,7 +127,7 @@ del all_cbns, tmp, test
 
 # NOTE: scaling irrelevant for tree-based models
 
-# revenues
+# revenues (in 000s)
 # NOTE: price is average price during the month
 df['revenues'] = df['item_price'] * df['item_cnt_month'] / 1000
 df['revenues'].fillna(0, inplace=True)
@@ -158,10 +163,16 @@ df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(int
 
 # use daily data to generate on_sale flag (e.g. price change in last 10 days)
 
-
-
-# mean over previous months (e.g. over 1, 2, 3 previous months)
-# for sales, item_cnt, etc. 
+# sum over month by category (same as mean encoding by month)
+cols = [
+	'shop_id',
+	'item_id',
+	'item_category_id',
+	'item_on_sale']
+for col in cols:
+	target_sum = df.groupby(['date_block_num', col], as_index=False)['item_cnt_month'].sum()
+	target_sum.rename(columns={'item_cnt_month': col + '_month_sum'}, inplace=True)
+	df = pd.merge(df, target_sum, on=['date_block_num', col], how='left')
 
 # can bin some features and treate them as categorical
 
@@ -172,23 +183,25 @@ df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(int
 ###################
 
 # NOTE: should be calculated on train data only (exclude validation set)
+# NOTE: doesn't work well, should calculate mean by month rather than
+#       over whole train set
 # TODO: recalculate on full dataset for final model
+if MEAN_ENCODING == True:
+	cols_to_mean_encode = [
+		'date_block_num',
+		'shop_id',
+		'item_id',
+		'item_category_id',
+		'city_encoded',
+		'year',
+		'month',
+		'item_on_sale'] # columns to mean-encode
+	target = 'item_cnt_month'
+	train_idx = df['date_block_num'].isin(np.arange(0, 33))  # TODO: global parameter
+	k = 5
 
-cols_to_mean_encode = [
-	'date_block_num',
-	'shop_id',
-	'item_id',
-	'item_category_id',
-	'city_encoded',
-	'year',
-	'month',
-	'item_on_sale'] # columns to mean-encode
-target = 'item_cnt_month'
-train_idx = df['date_block_num'].isin(np.arange(0, 33))  # TODO: global parameter
-k = 5
-
-df = mean_encoding(df, cols_to_mean_encode, target, train_idx)  # no regularization
-df = mean_encoding_kfold(df, cols_to_mean_encode, target, train_idx, k=5)  # over k-folds
+	df = mean_encoding(df, cols_to_mean_encode, target, train_idx)  # no regularization
+	df = mean_encoding_kfold(df, cols_to_mean_encode, target, train_idx, k=5)  # over k-folds
 
 ###################
 # create lags
@@ -201,10 +214,9 @@ def make_lags(df, cols, lags):
 		new_col_names = [col + "_l" + str(lag) for col in cols]
 		tmp = tmp.rename(columns=dict(zip(cols, new_col_names)))
 		df = pd.merge(df, tmp, on=['shop_id', 'item_id', 'date_block_num'], how='left')
-		print("lag %d created" %lag)
-	return(df)
+	return df
 
-lags = [1, 2, 3]
+lags = [1, 2, 3, 12]
 cols_to_lag = [
 	'item_cnt_month', 
 	'item_price', 
@@ -212,8 +224,12 @@ cols_to_lag = [
 	'item_price_diff',
 	'item_on_sale',
 	'item_price_diff_sign',
-	'item_on_sale_enc',
-	'item_on_sale_enc_kfold'
+	'shop_id_month_sum',
+	'item_id_month_sum',
+	'item_category_id_month_sum',
+	'item_on_sale_month_sum'
+	# 'item_on_sale_enc',
+	# 'item_on_sale_enc_kfold'
 	]
 df = make_lags(df, cols_to_lag, lags)
 
@@ -225,8 +241,6 @@ df = df[df['date_block_num'] >= max(lags)]
 for col in df.columns:
 	if ('item_cnt_month_l' in col):
 		df[col].fillna(0, inplace=True)
-
-# further variables based on lags (differences)
 
 ###################
 # save to pickle
