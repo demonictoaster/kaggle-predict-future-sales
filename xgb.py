@@ -11,6 +11,8 @@ from xgboost import plot_importance
 Fit XGBoost model
 
 TODO: 
+- change 'city_enc' to 'city_encoded' in cols_to_use
+- list variables to use instead of to exclude 
 - tune hyperparameters
 - try different early stopping methods
 - save best model for ensembling 
@@ -40,29 +42,75 @@ if DEBUG==True:
 # prepare train / validation / test sets 
 ###################
 
-# drop columns that cannot be used for training 
-# (cannot use values from the future)
-cols_to_drop = [
-	'item_cnt_month', 
-	'date', 
-	'item_price', 
-	'revenues', 
-	'ID', 
-	'city', 
-	'item_price_diff',
-	'item_on_sale',
-	'item_price_diff_sign']
+# select columns to be used for training 
+# NOTE: cannot use information from the future
+cols_to_use = [
+	'date_block_num',
+	'shop_id',
+	'item_id',
+	'item_category_id',
+	'city_encoded',
+	'year',
+	'month',
+	'n_days_in_month',
+	# 'date_block_num_enc',
+	# 'shop_id_enc',
+	# 'item_id_enc',
+	# 'item_category_id_enc',
+	# 'city_encoded_enc',
+	# 'year_enc',
+	# 'month_enc',
+	'date_block_num_enc_kfold',
+	'shop_id_enc_kfold',
+	'item_id_enc_kfold',
+	'item_category_id_enc_kfold',
+	'city_encoded_enc_kfold',
+	'year_enc_kfold',
+	'month_enc_kfold',
+	'item_cnt_month_l1',
+	'item_price_l1',
+	'revenues_l1',
+	'item_price_diff_l1',
+	'item_on_sale_l1',
+	'item_price_diff_sign_l1',
+	# 'item_on_sale_enc_l1',
+	'item_on_sale_enc_kfold_l1',
+	'item_cnt_month_l2',
+	'item_price_l2',
+	'revenues_l2',
+	'item_price_diff_l2',
+	'item_on_sale_l2',
+	'item_price_diff_sign_l2',
+	# 'item_on_sale_enc_l2',
+	'item_on_sale_enc_kfold_l2',
+	'item_cnt_month_l3',
+	'item_price_l3',
+	'revenues_l3',
+	'item_price_diff_l3',
+	'item_on_sale_l3',
+	'item_price_diff_sign_l3',
+	# 'item_on_sale_enc_l3',	
+	'item_on_sale_enc_kfold_l3'
+	# 'item_cnt_month_l12',
+	# 'item_price_l12',
+	# 'revenues_l12',
+	# 'item_price_diff_l12',
+	# 'item_on_sale_l12',
+	# 'item_price_diff_sign_l12',
+	# 'item_on_sale_enc_l12'
+	# 'item_on_sale_enc_kfold_l12'
+]
 
 # show features we will use for training
-df.drop(cols_to_drop, axis=1).info()
+df[cols_to_use].info()
 
 # NOTE: train/val split is done consistently with train/test split 
 # -> take last month of train data as validation set
-X_train = df.loc[df['date_block_num'] < 33].drop(cols_to_drop, axis=1)
+X_train = df.loc[df['date_block_num'] < 33, cols_to_use]
 Y_train = df.loc[df['date_block_num'] < 33]['item_cnt_month']
-X_val = df.loc[df['date_block_num'] == 33].drop(cols_to_drop, axis=1)
+X_val = df.loc[df['date_block_num'] == 33, cols_to_use]
 Y_val = df.loc[df['date_block_num'] == 33]['item_cnt_month']
-X_test = df.loc[df['date_block_num'] == 34].drop(cols_to_drop, axis=1)
+X_test = df.loc[df['date_block_num'] == 34, cols_to_use]
 
 ###################
 # XGBoost 
@@ -93,8 +141,8 @@ spent = str(np.round((time.time() - ts) / 60, 2))
 print('\n---- Execution time: ' + spent + " min ----")
 
 # plot feature importance
-plot_importance(model)
-plt.show()
+# plot_importance(model)
+# plt.show()
 
 # predictions
 pred = model.predict(X_test).clip(0,20)
@@ -108,5 +156,4 @@ submission.sort_values(by='ID', inplace=True)
 if DEBUG==False:
 	submission.to_csv(os.path.join(DATA_FOLDER, 'submission.csv'), index=False)
 
-
-
+os.system('say "Training over"')

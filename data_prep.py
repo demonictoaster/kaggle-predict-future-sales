@@ -1,5 +1,7 @@
 import itertools
 import os
+import pickle
+import sys
 import time
 
 import numpy as np
@@ -8,42 +10,23 @@ from scipy import stats
 
 from utils import *
 
+
 """
 NOTE:
 - no feature in test since forecasting -> need to use lags for all variables
 - can also use historical averages lags
 - test set is simply all unique shop_id/item_id combinations
 
-TODO
-- look at outliers (probably need to check by product and by shop,
-  cannot blindly winsorize over whole sample)
+TODO:
+- item_price_diff and item_price_diff_sign seem weird - check distribution
+- check if nulls in lags when running with whole dataset
+- check correl of mean-encoded feature with target
+- instead of casting to 16bit in the end, do it in the beginning to speed up things
 - do some normalization (if plan to use linear models or knn)
-- create lags
 - take logs and square transforms (for linear models)
-- we know that test data is for November 2015. Can use that as feature
-  (probably more sales in November/december than other months 
-  since Christmas period!)
-- maybe worth discarding shops that have just very few sales??
-- might be worth backfilling the train set with all dates
-  and set zeros when there were no sales
-- use label encoder (.factorize()) for dtype=='object'
-- use .feature_importance on trained model to see which ones are important
 - could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
-- could check changes in item prices to see if item is on sales
-  could also use a feature "on_sale_in_prev_month" (sales should decrease after)
-- should also be able to use item price as feature
-  (assuming it is the same as previous month, or same as in November 2014)
 - create trend features (e.g. via moving averages)
 - average sales in past month, number of sales in same month previous year
-- check distribution of shop_id and item_id across train and test and make
-  sure valiation set has same distribution as test set
-- check if test is simply all combinations of shop_id and test_id.
-  In this case we don't have same distrib in train and test (and predictions
-  should be zero for combinations that are not in train data). In this case
-  we must complete the validation set with combinations that have zero sales. 
-- could also use shop names (to flag shop that are part of a chain)
-- add trend variable
-- transform int and float to 16 bit to gain space
 - try using only pairs present in test data rather than all pair for each month
 """
 
@@ -51,7 +34,7 @@ TODO
 # setup
 ###################
 
-DEBUG = True  # if true take only subset of data to speed up computations
+DEBUG = False  # if true take only subset of data to speed up computations
 
 ts = time.time()
 pd.set_option('display.max_columns', 20)
@@ -126,6 +109,8 @@ test['date_block_num'] = 34
 test['date'] = "31.10.2015"
 df = pd.concat([df, test], ignore_index=True, sort=False, 
 		keys=keys)
+df['ID'].fillna(-999, inplace=True)  # to be able to convert to float
+df['ID'] = df['ID'].astype(np.int64)
 
 # delete stuff we don't need anymore
 del all_cbns, tmp, test
@@ -137,9 +122,10 @@ del all_cbns, tmp, test
 
 # NOTE: scaling irrelevant for tree-based models
 
-# sales 
+# revenues
 # NOTE: price is average price during the month
-df['revenues'] = df['item_price'] * df['item_cnt_month']
+df['revenues'] = df['item_price'] * df['item_cnt_month'] / 1000
+df['revenues'].fillna(0, inplace=True)
 
 # item category id
 items = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -151,7 +137,7 @@ del items
 shops = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))	
 shops['city'] = shops['shop_name'].str.split().str.get(0)
 df = pd.merge(df, shops.drop('shop_name', axis=1), on='shop_id', how='left')
-df['city_enc'], _ = pd.factorize(df['city'])  # label encoding
+df['city_encoded'], _ = pd.factorize(df['city'])  # label encoding
 del shops
 
 # month, year
@@ -166,6 +152,7 @@ df.loc[df['month']==2, 'n_days_in_month'] = 28.  # no leap year
 # change in price relative to previous month + on_sale flag
 df.sort_values(['shop_id','item_id', 'date_block_num'], inplace=True)
 df['item_price_diff'] = df.groupby(['shop_id', 'item_id'])['item_price'].diff()
+df['item_price_diff'].fillna(0, inplace=True)
 df['item_on_sale'], _ = pd.factorize(df['item_price_diff'] < 0)
 df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(int)
 
@@ -187,21 +174,21 @@ df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(int
 # NOTE: should be calculated on train data only (exclude validation set)
 # TODO: recalculate on full dataset for final model
 
-cols = [
+cols_to_mean_encode = [
 	'date_block_num',
 	'shop_id',
 	'item_id',
 	'item_category_id',
-	'city_enc',
+	'city_encoded',
 	'year',
 	'month',
 	'item_on_sale'] # columns to mean-encode
 target = 'item_cnt_month'
-train_idx = df['date_block_num'].isin(np.arange(0, 33))
+train_idx = df['date_block_num'].isin(np.arange(0, 33))  # TODO: global parameter
+k = 5
 
-df = mean_encoding(df, cols, target, train_idx)  # no regularization
-
-
+df = mean_encoding(df, cols_to_mean_encode, target, train_idx)  # no regularization
+df = mean_encoding_kfold(df, cols_to_mean_encode, target, train_idx, k=5)  # over k-folds
 
 ###################
 # create lags
@@ -217,17 +204,21 @@ def make_lags(df, cols, lags):
 		print("lag %d created" %lag)
 	return(df)
 
-lags = [1, 3, 12]
+lags = [1, 2, 3]
 cols_to_lag = [
 	'item_cnt_month', 
 	'item_price', 
 	'revenues',
 	'item_price_diff',
 	'item_on_sale',
-	'item_price_diff_sign']
+	'item_price_diff_sign',
+	'item_on_sale_enc',
+	'item_on_sale_enc_kfold'
+	]
 df = make_lags(df, cols_to_lag, lags)
 
 # remove periods for which lags cannot be computed (date_block_num starts at 0)
+# NOTE: lose 12 months of data if maxlag=12, might not be worth to include
 df = df[df['date_block_num'] >= max(lags)]
 
 # replace null by zero for target
@@ -237,12 +228,31 @@ for col in df.columns:
 
 # further variables based on lags (differences)
 
+###################
 # save to pickle
+###################
+
+# convert columns to 16bit when possible to speed up things
+# shouldn't have too much impact on model precision
+for col in df.columns:
+	col_dtype = df[col].dtype
+	if col_dtype == 'int64':
+		col_min = df[col].min()
+		col_max = df[col].max()
+		if (col_min > -1*2**15) & (col_max < 2**16-1): 
+			df[col] = df[col].astype(np.int8)
+	if col_dtype == 'float64':
+		col_min = df[col].min()
+		col_max = df[col].max()
+		if (col_min > -6.1e5) & (col_max < 6.55e4):
+			df[col] = df[col].astype(np.float16)
+
+df.info()
+
 if DEBUG==False:
 	df.to_pickle(os.path.join(DATA_FOLDER, 'df.pkl'))
-
-# print execution time
+	
+# execution time
 spent = str(np.round((time.time() - ts) / 60, 2))
 print('\n---- Execution time: ' + spent + " min ----")
-
-
+os.system('say "Data prep over"')
