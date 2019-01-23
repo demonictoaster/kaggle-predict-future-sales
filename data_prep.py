@@ -17,7 +17,6 @@ NOTE:
 - test set is simply all unique shop_id/item_id combinations
 
 TODO:
-- clean lag creation -- call function on the go when it is needed
 - mean encoding should be done by month -- adjust functions
 - item_price_diff and item_price_diff_sign seem weird - check distribution
 - check if nulls in lags when running with whole dataset
@@ -40,6 +39,8 @@ TODO:
 
 DEBUG = False  		   # if true take only subset of data to speed up computations
 MEAN_ENCODING = False  # apply mean enconding (mean calculated over full train set)
+
+lags = [1, 2, 3, 12]
 
 ts = time.time()
 pd.set_option('display.max_columns', 20)
@@ -117,6 +118,12 @@ df = pd.concat([df, test], ignore_index=True, sort=False,
 df['ID'].fillna(-999, inplace=True)  # to be able to convert to float
 df['ID'] = df['ID'].astype(np.int64)
 
+# lag item_cnt_month and item_price
+df = make_lags(df, ['item_cnt_month', 'item_price'], lags)
+for col in df.columns:
+	if ('item_cnt_month_l' in col):
+		df[col].fillna(0, inplace=True)
+
 # delete stuff we don't need anymore
 del all_cbns, tmp, test
 
@@ -131,6 +138,7 @@ del all_cbns, tmp, test
 # NOTE: price is average price during the month
 df['revenues'] = df['item_price'] * df['item_cnt_month'] / 1000
 df['revenues'].fillna(0, inplace=True)
+df = make_lags(df, ['revenues'], lags)
 
 # item category id
 items = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -158,8 +166,10 @@ df.loc[df['month']==2, 'n_days_in_month'] = 28.  # no leap year
 df.sort_values(['shop_id','item_id', 'date_block_num'], inplace=True)
 df['item_price_diff'] = df.groupby(['shop_id', 'item_id'])['item_price'].diff()
 df['item_price_diff'].fillna(0, inplace=True)
-df['item_on_sale'], _ = pd.factorize(df['item_price_diff'] < 0)
 df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(int)
+df['item_on_sale'], _ = pd.factorize(df['item_price_diff'] < 0)
+df = make_lags(df, ['item_price_diff', 'item_price_diff_sign', 'item_on_sale'], lags)
+
 
 # use daily data to generate on_sale flag (e.g. price change in last 10 days)
 
@@ -173,6 +183,7 @@ for col in cols:
 	target_sum = df.groupby(['date_block_num', col], as_index=False)['item_cnt_month'].sum()
 	target_sum.rename(columns={'item_cnt_month': col + '_month_sum'}, inplace=True)
 	df = pd.merge(df, target_sum, on=['date_block_num', col], how='left')
+df = make_lags(df, [col + '_month_sum' for col in cols], lags)
 
 # can bin some features and treate them as categorical
 
@@ -204,47 +215,12 @@ if MEAN_ENCODING == True:
 	df = mean_encoding_kfold(df, cols_to_mean_encode, target, train_idx, k=5)  # over k-folds
 
 ###################
-# create lags
+# last steps and pickle
 ###################
-
-def make_lags(df, cols, lags):
-	for lag in lags:
-		tmp = df[['shop_id', 'item_id', 'date_block_num'] + cols].copy()
-		tmp['date_block_num'] += lag
-		new_col_names = [col + "_l" + str(lag) for col in cols]
-		tmp = tmp.rename(columns=dict(zip(cols, new_col_names)))
-		df = pd.merge(df, tmp, on=['shop_id', 'item_id', 'date_block_num'], how='left')
-	return df
-
-lags = [1, 2, 3, 12]
-cols_to_lag = [
-	'item_cnt_month', 
-	'item_price', 
-	'revenues',
-	'item_price_diff',
-	'item_on_sale',
-	'item_price_diff_sign',
-	'shop_id_month_sum',
-	'item_id_month_sum',
-	'item_category_id_month_sum',
-	'item_on_sale_month_sum'
-	# 'item_on_sale_enc',
-	# 'item_on_sale_enc_kfold'
-	]
-df = make_lags(df, cols_to_lag, lags)
 
 # remove periods for which lags cannot be computed (date_block_num starts at 0)
 # NOTE: lose 12 months of data if maxlag=12, might not be worth to include
 df = df[df['date_block_num'] >= max(lags)]
-
-# replace null by zero for target
-for col in df.columns:
-	if ('item_cnt_month_l' in col):
-		df[col].fillna(0, inplace=True)
-
-###################
-# save to pickle
-###################
 
 # convert columns to 16bit when possible to speed up things
 # shouldn't have too much impact on model precision

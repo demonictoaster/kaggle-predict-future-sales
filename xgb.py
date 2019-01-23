@@ -76,43 +76,43 @@ cols_to_use = [
 	'shop_id_month_sum_l1',
 	'item_id_month_sum_l1',
 	'item_category_id_month_sum_l1',
-	'item_on_sale_month_sum_l1',
+	'item_on_sale_month_sum_l1'
 	# 'item_on_sale_enc_l1',
 	# 'item_on_sale_enc_kfold_l1',
-	'item_cnt_month_l2',
-	'item_price_l2',
-	'revenues_l2',
-	'item_price_diff_l2',
-	'item_on_sale_l2',
-	'item_price_diff_sign_l2',
-	'shop_id_month_sum_l2',
-	'item_id_month_sum_l2',
-	'item_category_id_month_sum_l2',
-	'item_on_sale_month_sum_l2',
+	# 'item_cnt_month_l2',
+	# 'item_price_l2',
+	# 'revenues_l2',
+	# 'item_price_diff_l2',
+	# 'item_on_sale_l2',
+	# 'item_price_diff_sign_l2',
+	# 'shop_id_month_sum_l2',
+	# 'item_id_month_sum_l2',
+	# 'item_category_id_month_sum_l2',
+	# 'item_on_sale_month_sum_l2',
 	# 'item_on_sale_enc_l2',
 	# 'item_on_sale_enc_kfold_l2',
-	'item_cnt_month_l3',
-	'item_price_l3',
-	'revenues_l3',
-	'item_price_diff_l3',
-	'item_on_sale_l3',
-	'item_price_diff_sign_l3',
-	'shop_id_month_sum_l3',
-	'item_id_month_sum_l3',
-	'item_category_id_month_sum_l3',
-	'item_on_sale_month_sum_l3',
+	# 'item_cnt_month_l3',
+	# 'item_price_l3',
+	# 'revenues_l3',
+	# 'item_price_diff_l3',
+	# 'item_on_sale_l3',
+	# 'item_price_diff_sign_l3',
+	# 'shop_id_month_sum_l3',
+	# 'item_id_month_sum_l3',
+	# 'item_category_id_month_sum_l3',
+	# 'item_on_sale_month_sum_l3',
 	# 'item_on_sale_enc_l3',	
 	# 'item_on_sale_enc_kfold_l3'
-	'item_cnt_month_l12',
-	'item_price_l12',
-	'revenues_l12',
-	'item_price_diff_l12',
-	'item_on_sale_l12',
-	'item_price_diff_sign_l12',
-	'shop_id_month_sum_l12',
-	'item_id_month_sum_l12',
-	'item_category_id_month_sum_l12',
-	'item_on_sale_month_sum_l12',
+	# 'item_cnt_month_l12',
+	# 'item_price_l12',
+	# 'revenues_l12',
+	# 'item_price_diff_l12',
+	# 'item_on_sale_l12',
+	# 'item_price_diff_sign_l12',
+	# 'shop_id_month_sum_l12',
+	# 'item_id_month_sum_l12',
+	# 'item_category_id_month_sum_l12',
+	# 'item_on_sale_month_sum_l12',
 	# 'item_on_sale_enc_l12'
 	# 'item_on_sale_enc_kfold_l12'
 ]
@@ -134,8 +134,8 @@ X_test = df.loc[df['date_block_num'] == 34, cols_to_use]
 
 # define model
 model = XGBRegressor(
-	max_depth=7,
-    n_estimators=1000,
+	max_depth=6,
+    n_estimators=100,
     min_child_weight=300, 
     colsample_bytree=0.8, 
     subsample=0.8, 
@@ -155,7 +155,7 @@ model.fit(
 # print execution time
 spent = str(np.round((time.time() - ts) / 60, 2))
 print('\n---- Execution time: ' + spent + " min ----")
-#os.system('say "Training over"')
+os.system('say "Training over"')
 
 ###################
 # some plots 
