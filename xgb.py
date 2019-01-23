@@ -53,32 +53,23 @@ cols_to_use = [
 	'year',
 	'month',
 	'n_days_in_month',
-	# 'date_block_num_enc',
-	# 'shop_id_enc',
-	# 'item_id_enc',
-	# 'item_category_id_enc',
-	# 'city_encoded_enc',
-	# 'year_enc',
-	# 'month_enc',
-	# 'date_block_num_enc_kfold',
-	# 'shop_id_enc_kfold',
-	# 'item_id_enc_kfold',
-	# 'item_category_id_enc_kfold',
-	# 'city_encoded_enc_kfold',
-	# 'year_enc_kfold',
-	# 'month_enc_kfold',
 	'item_cnt_month_l1',
 	'item_price_l1',
 	'revenues_l1',
 	'item_price_diff_l1',
 	'item_on_sale_l1',
 	'item_price_diff_sign_l1',
-	'shop_id_month_sum_l1',
-	'item_id_month_sum_l1',
-	'item_category_id_month_sum_l1',
-	'item_on_sale_month_sum_l1'
-	# 'item_on_sale_enc_l1',
-	# 'item_on_sale_enc_kfold_l1',
+	'shop_id_month_avg_l1',
+	'item_id_month_avg_l1',
+	'item_category_id_month_avg_l1',
+	'city_encoded_month_avg_l1',
+	'year_month_avg_l1',
+	'item_on_sale_month_avg_l1',
+	'shop_vs_cat_month_avg_l1',
+	'shop_vs_item_month_avg_l1',
+	'shop_vs_city_month_avg_l1',
+	'city_vs_cat_month_avg_l1',
+	'year_vs_cat_month_avg_l1'
 	# 'item_cnt_month_l2',
 	# 'item_price_l2',
 	# 'revenues_l2',
@@ -89,8 +80,6 @@ cols_to_use = [
 	# 'item_id_month_sum_l2',
 	# 'item_category_id_month_sum_l2',
 	# 'item_on_sale_month_sum_l2',
-	# 'item_on_sale_enc_l2',
-	# 'item_on_sale_enc_kfold_l2',
 	# 'item_cnt_month_l3',
 	# 'item_price_l3',
 	# 'revenues_l3',
@@ -101,8 +90,6 @@ cols_to_use = [
 	# 'item_id_month_sum_l3',
 	# 'item_category_id_month_sum_l3',
 	# 'item_on_sale_month_sum_l3',
-	# 'item_on_sale_enc_l3',	
-	# 'item_on_sale_enc_kfold_l3'
 	# 'item_cnt_month_l12',
 	# 'item_price_l12',
 	# 'revenues_l12',
@@ -113,12 +100,11 @@ cols_to_use = [
 	# 'item_id_month_sum_l12',
 	# 'item_category_id_month_sum_l12',
 	# 'item_on_sale_month_sum_l12',
-	# 'item_on_sale_enc_l12'
-	# 'item_on_sale_enc_kfold_l12'
 ]
 
 # show features we will use for training
 df[cols_to_use].info()
+df[cols_to_use].isnull().describe()
 
 # NOTE: train/val split is done consistently with train/test split 
 # -> take last month of train data as validation set
@@ -134,7 +120,7 @@ X_test = df.loc[df['date_block_num'] == 34, cols_to_use]
 
 # define model
 model = XGBRegressor(
-	max_depth=6,
+	max_depth=8,
     n_estimators=100,
     min_child_weight=300, 
     colsample_bytree=0.8, 

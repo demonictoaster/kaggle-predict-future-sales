@@ -12,34 +12,25 @@ from utils import *
 
 """
 NOTE:
-- no feature in test since forecasting -> need to use lags for all variables
-- can also use historical averages lags
-- test set is simply all unique shop_id/item_id combinations
+- test set consists simply of all unique shop_id/item_id combinations (for that 
+  specific month). Hence should format our train data accordingly. 
 
 TODO:
-- mean encoding should be done by month -- adjust functions
-- item_price_diff and item_price_diff_sign seem weird - check distribution
-- check if nulls in lags when running with whole dataset
-- check correl of mean-encoded feature with target
+- try using only pairs present in test data rather than all pair for each month
 - instead of casting to 16bit in the end, do it in the beginning to speed up things
 - do some normalization (if plan to use linear models or knn)
 - take logs and square transforms (for linear models)
 - could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
 - create trend features (e.g. via moving averages)
-- average sales in past month, number of sales in same month previous year
-- try using only pairs present in test data rather than all pair for each month
-- Apart from item/shop pair lags you can try adding lagged values of total shop or 
-  total item sales (which are essentially mean-encodings). 
-  All of that is going to add some new information.
+- can bin some features and treate them as categorical
+- use daily data to generate on_sale flag (e.g. price change in last 10 days)
 """
 
 ###################
 # setup
 ###################
 
-DEBUG = False  		   # if true take only subset of data to speed up computations
-MEAN_ENCODING = False  # apply mean enconding (mean calculated over full train set)
-
+DEBUG = False  # if true take only subset of data to speed up computations
 lags = [1, 2, 3, 12]
 
 ts = time.time()
@@ -120,13 +111,9 @@ df['ID'] = df['ID'].astype(np.int64)
 
 # lag item_cnt_month and item_price
 df = make_lags(df, ['item_cnt_month', 'item_price'], lags)
-for col in df.columns:
-	if ('item_cnt_month_l' in col):
-		df[col].fillna(0, inplace=True)
 
 # delete stuff we don't need anymore
 del all_cbns, tmp, test
-
 
 ###################
 # feature generation
@@ -137,7 +124,6 @@ del all_cbns, tmp, test
 # revenues (in 000s)
 # NOTE: price is average price during the month
 df['revenues'] = df['item_price'] * df['item_cnt_month'] / 1000
-df['revenues'].fillna(0, inplace=True)
 df = make_lags(df, ['revenues'], lags)
 
 # item category id
@@ -170,53 +156,78 @@ df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(int
 df['item_on_sale'], _ = pd.factorize(df['item_price_diff'] < 0)
 df = make_lags(df, ['item_price_diff', 'item_price_diff_sign', 'item_on_sale'], lags)
 
-
-# use daily data to generate on_sale flag (e.g. price change in last 10 days)
-
-# sum over month by category (same as mean encoding by month)
-cols = [
-	'shop_id',
-	'item_id',
-	'item_category_id',
-	'item_on_sale']
-for col in cols:
-	target_sum = df.groupby(['date_block_num', col], as_index=False)['item_cnt_month'].sum()
-	target_sum.rename(columns={'item_cnt_month': col + '_month_sum'}, inplace=True)
-	df = pd.merge(df, target_sum, on=['date_block_num', col], how='left')
-df = make_lags(df, [col + '_month_sum' for col in cols], lags)
-
-# can bin some features and treate them as categorical
-
-# lagged values of total shop or total item sales
-
 ###################
 # mean encoding
 ###################
 
 # NOTE: should be calculated on train data only (exclude validation set)
-# NOTE: doesn't work well, should calculate mean by month rather than
-#       over whole train set
-# TODO: recalculate on full dataset for final model
-if MEAN_ENCODING == True:
-	cols_to_mean_encode = [
-		'date_block_num',
-		'shop_id',
-		'item_id',
-		'item_category_id',
-		'city_encoded',
-		'year',
-		'month',
-		'item_on_sale'] # columns to mean-encode
-	target = 'item_cnt_month'
-	train_idx = df['date_block_num'].isin(np.arange(0, 33))  # TODO: global parameter
-	k = 5
+# NOTE:  tradtional mean encoding doesn't work well
+cols_to_mean_encode = [
+	'shop_id',
+	'item_id',
+	'item_category_id',
+	'city_encoded',
+	'year',
+	'item_on_sale'] # columns to mean-encode
+target = 'item_cnt_month'
+train_idx = df['date_block_num'].isin(np.arange(0, 33))
+k = 5
 
-	df = mean_encoding(df, cols_to_mean_encode, target, train_idx)  # no regularization
-	df = mean_encoding_kfold(df, cols_to_mean_encode, target, train_idx, k=5)  # over k-folds
+# df = mean_encoding(df, cols_to_mean_encode, target, train_idx)  # no regularization
+# df = mean_encoding_kfold(df, cols_to_mean_encode, target, train_idx, k=5)  # over k-folds
+df = mean_encoding_month(df, cols_to_mean_encode)
+df = make_lags(df, [col + '_month_avg' for col in cols_to_mean_encode], lags)
+
+# check correlation with target variable
+# for col in cols_to_mean_encode:
+# 	cor = np.corrcoef(df.loc[train_idx, col + '_month_avg'].values, df.loc[train_idx, 'item_cnt_month'].values)[0][1]
+# 	print(cor)
+
+###################
+# interaction mean encoding
+###################
+
+# shop_id vs item_category
+target_mean = df.groupby(['date_block_num', 'shop_id', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
+target_mean.rename(columns={'item_cnt_month': 'shop_vs_cat_month_avg'}, inplace=True)
+df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'item_category_id'], how='left')
+
+# shop_id vs item_id
+target_mean = df.groupby(['date_block_num', 'shop_id', 'item_id'], as_index=False)['item_cnt_month'].mean()
+target_mean.rename(columns={'item_cnt_month': 'shop_vs_item_month_avg'}, inplace=True)
+df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'item_id'], how='left')
+
+# shop_id vs city
+target_mean = df.groupby(['date_block_num', 'shop_id', 'city'], as_index=False)['item_cnt_month'].mean()
+target_mean.rename(columns={'item_cnt_month': 'shop_vs_city_month_avg'}, inplace=True)
+df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'city'], how='left')
+
+# city vs item_category
+target_mean = df.groupby(['date_block_num', 'city', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
+target_mean.rename(columns={'item_cnt_month': 'city_vs_cat_month_avg'}, inplace=True)
+df = pd.merge(df, target_mean, on=['date_block_num', 'city', 'item_category_id'], how='left')
+
+# month vs item_category
+target_mean = df.groupby(['date_block_num', 'year', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
+target_mean.rename(columns={'item_cnt_month': 'year_vs_cat_month_avg'}, inplace=True)
+df = pd.merge(df, target_mean, on=['date_block_num', 'year', 'item_category_id'], how='left')
+
+to_lag = [
+	'shop_vs_cat_month_avg',
+	'shop_vs_item_month_avg',
+	'shop_vs_city_month_avg',
+	'city_vs_cat_month_avg',
+	'year_vs_cat_month_avg']
+df = make_lags(df, to_lag, lags)
 
 ###################
 # last steps and pickle
 ###################
+
+# lags lead to NaNs, need to replace by zero for all variables based on item_cnt_month
+for col in df.columns:
+	if ('item_cnt_month' in col or 'revenues' in col or 'month_avg' in col):
+		df[col].fillna(0, inplace=True)
 
 # remove periods for which lags cannot be computed (date_block_num starts at 0)
 # NOTE: lose 12 months of data if maxlag=12, might not be worth to include

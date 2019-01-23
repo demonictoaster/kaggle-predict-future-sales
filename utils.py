@@ -8,6 +8,7 @@ A bunch of functions used for feature generation:
 
  - mean_encoding(): mean encoding without regularization
  - mean_encoding_kold(): mean encoding over k-folds
+ - mean_encoding_month(): mean envoding over month
  - make_lags(): create lagged values for specified cols
 
 """
@@ -34,6 +35,13 @@ def mean_encoding_kfold(df, cols, target, train_idx, k):
 			mean_fold = train.iloc[idx_rest].groupby(col)[target].mean()
 			df.loc[df.index[idx_fold], col + '_enc_kfold'] = df[col].map(mean_fold)
 			df[col + '_enc_kfold'].fillna(global_avg, inplace=True)
+	return df
+
+def mean_encoding_month(df, cols):
+	for col in cols:
+		target_mean = df.groupby(['date_block_num', col], as_index=False)['item_cnt_month'].mean()
+		target_mean.rename(columns={'item_cnt_month': col + '_month_avg'}, inplace=True)
+		df = pd.merge(df, target_mean, on=['date_block_num', col], how='left')
 	return df
 
 def make_lags(df, cols, lags):
