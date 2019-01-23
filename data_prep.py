@@ -16,6 +16,9 @@ NOTE:
   specific month). Hence should format our train data accordingly. 
 
 TODO:
+- check negative item prices (fill with median by block_id, shop_id and item_id)
+- revenues by shop/date_block_num rather that raw
+- make functions for interaction encoding
 - try using only pairs present in test data rather than all pair for each month
 - instead of casting to 16bit in the end, do it in the beginning to speed up things
 - do some normalization (if plan to use linear models or knn)
@@ -30,7 +33,7 @@ TODO:
 # setup
 ###################
 
-DEBUG = False  # if true take only subset of data to speed up computations
+DEBUG = True  # if true take only subset of data to speed up computations
 lags = [1, 2, 3, 12]
 
 ts = time.time()
@@ -59,6 +62,7 @@ df.rename(columns={'item_cnt_day':'item_cnt_month'}, inplace=True)
 if DEBUG==True:
 	df = df.sample(frac=0.01, random_state=12)
 	test = test.sample(n=3, random_state=12)
+	lags = [1]
 
 ###################
 # data prep
@@ -66,8 +70,7 @@ if DEBUG==True:
 
 # we saw in first EDA step that test set contains all pairs for shop and item
 # IDs that are present. Hence need to also reflect this in train set.
-
-# first we create all combinations for each month and store them in a list
+# we create all combinations for each month and merge that with main DF
 all_cbns = []
 for i in range(34):
 	tmp = df[df['date_block_num']==i]
@@ -77,10 +80,7 @@ for i in range(34):
     cbns = (list(itertools.product(*labels)))
     all_cbns.append(np.array(cbns))
 
-# create pandas DF out of this list
 all_cbns = pd.DataFrame(np.vstack(all_cbns), columns=keys)
-
-# merge with train data
 df = pd.merge(all_cbns, df, on=keys, how='left')
 
 # for non existing pair in train, item_count should be set to zero
@@ -98,7 +98,7 @@ df = pd.merge(df, tmp, on='date_block_num', how='left')
 # ground truth target values clipped into [0.20] range (see description on kaggle)
 df.item_cnt_month = np.clip(df.item_cnt_month, 0, 20)
 
-# winsorize price data to get rid of outlier in EDA
+# winsorize price data to get rid of outlier in EDA and downcast to 16bit
 df['item_price'] = stats.mstats.winsorize(df.item_price, limits=(0,0.01))
 
 # append test set to train set to make lag creation easier
@@ -106,8 +106,14 @@ test['date_block_num'] = 34
 test['date'] = "31.10.2015"
 df = pd.concat([df, test], ignore_index=True, sort=False, 
 		keys=keys)
-df['ID'].fillna(-999, inplace=True)  # to be able to convert to float
-df['ID'] = df['ID'].astype(np.int64)
+df['ID'].fillna(-999, inplace=True)  # to be able to convert to integer
+
+# downcast to 8 / 16 bits where possible
+df['date_block_num'] = df['date_block_num'].astype(np.int8)
+df['shop_id'] = df['shop_id'].astype(np.int8)
+df['item_id'] = df['item_id'].astype(np.int16)
+df['item_cnt_month'] = df['item_cnt_month'].astype(np.float16)
+df['ID'] = df['ID'].astype(np.int16)
 
 # lag item_cnt_month and item_price
 df = make_lags(df, ['item_cnt_month', 'item_price'], lags)
@@ -184,7 +190,7 @@ df = make_lags(df, [col + '_month_avg' for col in cols_to_mean_encode], lags)
 # 	print(cor)
 
 ###################
-# interaction mean encoding
+# interaction encoding
 ###################
 
 # shop_id vs item_category

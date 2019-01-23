@@ -45,10 +45,11 @@ def mean_encoding_month(df, cols):
 	return df
 
 def make_lags(df, cols, lags):
+	tmp = df[['shop_id', 'item_id', 'date_block_num'] + cols]
 	for lag in lags:
-		tmp = df[['shop_id', 'item_id', 'date_block_num'] + cols].copy()
-		tmp['date_block_num'] += lag
+		tmp_lagged = tmp.copy()
+		tmp_lagged['date_block_num'] += lag
 		new_col_names = [col + "_l" + str(lag) for col in cols]
-		tmp = tmp.rename(columns=dict(zip(cols, new_col_names)))
-		df = pd.merge(df, tmp, on=['shop_id', 'item_id', 'date_block_num'], how='left')
+		tmp_lagged = tmp_lagged.rename(columns=dict(zip(cols, new_col_names)))
+		df = pd.merge(df, tmp_lagged, on=['shop_id', 'item_id', 'date_block_num'], how='left')
 	return df
