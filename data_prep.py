@@ -16,6 +16,9 @@ NOTE:
   specific month). Hence should format our train data accordingly. 
 
 TODO:
+- add flag pair_present_in_train (if not probably means the shop doesn't even
+  sell that product). If not helping much can hardcode predictiosn to be zero in these
+  cases.
 - check negative item prices (fill with median by block_id, shop_id and item_id)
 - revenues by shop/date_block_num rather that raw
 - make functions for interaction encoding
@@ -33,7 +36,7 @@ TODO:
 # setup
 ###################
 
-DEBUG = True  # if true take only subset of data to speed up computations
+DEBUG = False  # if true take only subset of data to speed up computations
 lags = [1, 2, 3, 12]
 
 ts = time.time()
@@ -86,6 +89,9 @@ df = pd.merge(all_cbns, df, on=keys, how='left')
 # for non existing pair in train, item_count should be set to zero
 df['item_cnt_month'] = df['item_cnt_month'].fillna(0)
 
+# ground truth target values clipped into [0.20] range (see description on kaggle)
+df.item_cnt_month = np.clip(df.item_cnt_month, 0, 20)
+
 # create date for each date_block_num (set all to first day of the month)
 tmp = []
 for i in range(2013,2016):
@@ -94,9 +100,6 @@ for i in range(2013,2016):
 tmp = {'date_block_num':np.arange(34), 'date':tmp[0:34]}
 tmp = pd.DataFrame(tmp)
 df = pd.merge(df, tmp, on='date_block_num', how='left')
-
-# ground truth target values clipped into [0.20] range (see description on kaggle)
-df.item_cnt_month = np.clip(df.item_cnt_month, 0, 20)
 
 # winsorize price data to get rid of outlier in EDA and downcast to 16bit
 df['item_price'] = stats.mstats.winsorize(df.item_price, limits=(0,0.01))
@@ -107,13 +110,14 @@ test['date'] = "31.10.2015"
 df = pd.concat([df, test], ignore_index=True, sort=False, 
 		keys=keys)
 df['ID'].fillna(-999, inplace=True)  # to be able to convert to integer
+df['ID'] = df['ID'].astype(np.int32)
 
-# downcast to 8 / 16 bits where possible
-df['date_block_num'] = df['date_block_num'].astype(np.int8)
-df['shop_id'] = df['shop_id'].astype(np.int8)
+# downcast to 16 / 32 bits where possible
+df['date_block_num'] = df['date_block_num'].astype(np.int16)
+df['shop_id'] = df['shop_id'].astype(np.int16)
 df['item_id'] = df['item_id'].astype(np.int16)
-df['item_cnt_month'] = df['item_cnt_month'].astype(np.float16)
-df['ID'] = df['ID'].astype(np.int16)
+df['item_cnt_month'] = df['item_cnt_month'].astype(np.float32)
+df['item_price'] = df['item_price'].astype(np.float32)
 
 # lag item_cnt_month and item_price
 df = make_lags(df, ['item_cnt_month', 'item_price'], lags)
@@ -135,6 +139,7 @@ df = make_lags(df, ['revenues'], lags)
 # item category id
 items = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
 df = pd.merge(df, items.drop('item_name', axis=1), on='item_id')
+df['item_category_id'] = df['item_category_id'].astype(np.int16)
 del items
 
 # shops info: read on forum that first word is the city
@@ -143,24 +148,34 @@ shops = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))
 shops['city'] = shops['shop_name'].str.split().str.get(0)
 df = pd.merge(df, shops.drop('shop_name', axis=1), on='shop_id', how='left')
 df['city_encoded'], _ = pd.factorize(df['city'])  # label encoding
+df['city_encoded'] = df['city_encoded'].astype(np.int16)
 del shops
 
 # month, year
 df['year'] = pd.to_numeric(df['date'].astype(str).str[-4:])
 df['month'] = pd.to_numeric(df['date'].astype(str).str[3:5])
+df['year'] = df['year'].astype(np.int16)
+df['month'] = df['month'].astype(np.int16)
 
 # number of days in month (should have a small impact on sales)
 df['n_days_in_month'] = 31.
 df.loc[df['month'].isin([4, 6, 9, 11]), 'n_days_in_month'] = 30.
 df.loc[df['month']==2, 'n_days_in_month'] = 28.  # no leap year
+df['n_days_in_month'] = df['n_days_in_month'].astype(np.float32)
 
 # change in price relative to previous month + on_sale flag
+# NOTE: NaNs resulting form lag are replaced by zero (i.e. no change)
 df.sort_values(['shop_id','item_id', 'date_block_num'], inplace=True)
 df['item_price_diff'] = df.groupby(['shop_id', 'item_id'])['item_price'].diff()
 df['item_price_diff'].fillna(0, inplace=True)
-df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(int)
+df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(np.int16)
 df['item_on_sale'], _ = pd.factorize(df['item_price_diff'] < 0)
-df = make_lags(df, ['item_price_diff', 'item_price_diff_sign', 'item_on_sale'], lags)
+df['item_on_sale'] = df['item_on_sale'].astype(np.int16)
+
+df = make_lags(df, ['item_price_diff', 'item_price_diff_sign', 'item_on_sale'], [1])
+df['item_price_diff_l1'].fillna(0, inplace=True)
+df['item_price_diff_sign_l1'].fillna(0, inplace=True)
+df['item_on_sale_l1'].fillna(0, inplace=True)
 
 ###################
 # mean encoding
@@ -227,7 +242,7 @@ to_lag = [
 df = make_lags(df, to_lag, lags)
 
 ###################
-# last steps and pickle
+# last steps and save
 ###################
 
 # lags lead to NaNs, need to replace by zero for all variables based on item_cnt_month
@@ -239,26 +254,17 @@ for col in df.columns:
 # NOTE: lose 12 months of data if maxlag=12, might not be worth to include
 df = df[df['date_block_num'] >= max(lags)]
 
-# convert columns to 16bit when possible to speed up things
-# shouldn't have too much impact on model precision
-for col in df.columns:
-	col_dtype = df[col].dtype
-	if col_dtype == 'int64':
-		col_min = df[col].min()
-		col_max = df[col].max()
-		if (col_min > -1*2**15) & (col_max < 2**16-1): 
-			df[col] = df[col].astype(np.int8)
-	if col_dtype == 'float64':
-		col_min = df[col].min()
-		col_max = df[col].max()
-		if (col_min > -6.1e5) & (col_max < 6.55e4):
-			df[col] = df[col].astype(np.float16)
+# some variables were incorrectly transformed to float due to presence of NaN
+df['item_price_diff_sign_l1'] = df['item_price_diff_sign_l1'].astype(np.int16)
+df['item_on_sale_l1'] = df['item_on_sale_l1'].astype(np.int16)
 
 df.info()
 
 if DEBUG==False:
-	df.to_pickle(os.path.join(DATA_FOLDER, 'df.pkl'))
-	
+	#df.to_pickle(os.path.join(DATA_FOLDER, 'df.pkl'))
+	df.to_hdf(os.path.join(DATA_FOLDER, 'data_xgb_train.h5'), key='df', mode='w')
+
+
 # execution time
 spent = str(np.round((time.time() - ts) / 60, 2))
 print('\n---- Execution time: ' + spent + " min ----")

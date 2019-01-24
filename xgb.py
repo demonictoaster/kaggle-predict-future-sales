@@ -15,6 +15,7 @@ TODO:
 - hyperparameter tuning
 - try different early stopping methods
 - save best model for ensembling 
+- hard code combination not in training sample to zero?
 """
 
 ###################
@@ -32,7 +33,8 @@ ROOT = os.path.abspath('')
 DATA_FOLDER = ROOT + '/data'
 
 # import data
-df = pd.read_pickle(os.path.join(DATA_FOLDER, 'df.pkl'))
+#df = pd.read_pickle(os.path.join(DATA_FOLDER, 'df.pkl'))
+df = pd.read_hdf(os.path.join(DATA_FOLDER, 'data_xgb_train.h5'), 'df')
 
 # shrink data size for debugging
 if DEBUG==True:
@@ -69,37 +71,49 @@ cols_to_use = [
 	'shop_vs_item_month_avg_l1',
 	'shop_vs_city_month_avg_l1',
 	'city_vs_cat_month_avg_l1',
-	'year_vs_cat_month_avg_l1'
-	# 'item_cnt_month_l2',
+	'year_vs_cat_month_avg_l1',
+	'item_cnt_month_l2',
 	# 'item_price_l2',
 	# 'revenues_l2',
-	# 'item_price_diff_l2',
-	# 'item_on_sale_l2',
-	# 'item_price_diff_sign_l2',
-	# 'shop_id_month_sum_l2',
-	# 'item_id_month_sum_l2',
-	# 'item_category_id_month_sum_l2',
-	# 'item_on_sale_month_sum_l2',
-	# 'item_cnt_month_l3',
+	'shop_id_month_avg_l2',
+	'item_id_month_avg_l2',
+	'item_category_id_month_avg_l2',
+	# 'city_encoded_month_avg_l2',
+	# 'year_month_avg_l2',
+	# 'item_on_sale_month_avg_l2',
+	# 'shop_vs_cat_month_avg_l2',
+	# 'shop_vs_item_month_avg_l2',
+	# 'shop_vs_city_month_avg_l2',
+	# 'city_vs_cat_month_avg_l2',
+	# 'year_vs_cat_month_avg_l2',
+	'item_cnt_month_l3',
 	# 'item_price_l3',
 	# 'revenues_l3',
-	# 'item_price_diff_l3',
-	# 'item_on_sale_l3',
-	# 'item_price_diff_sign_l3',
-	# 'shop_id_month_sum_l3',
-	# 'item_id_month_sum_l3',
-	# 'item_category_id_month_sum_l3',
-	# 'item_on_sale_month_sum_l3',
-	# 'item_cnt_month_l12',
+	'shop_id_month_avg_l3',
+	'item_id_month_avg_l3',
+	'item_category_id_month_avg_l3',
+	# 'city_encoded_month_avg_l3',
+	# 'year_month_avg_l3',
+	# 'item_on_sale_month_avg_l3',
+	# 'shop_vs_cat_month_avg_l3',
+	# 'shop_vs_item_month_avg_l3',
+	# 'shop_vs_city_month_avg_l3',
+	# 'city_vs_cat_month_avg_l3',
+	# 'year_vs_cat_month_avg_l3',
+	'item_cnt_month_l12',
 	# 'item_price_l12',
 	# 'revenues_l12',
-	# 'item_price_diff_l12',
-	# 'item_on_sale_l12',
-	# 'item_price_diff_sign_l12',
-	# 'shop_id_month_sum_l12',
-	# 'item_id_month_sum_l12',
-	# 'item_category_id_month_sum_l12',
-	# 'item_on_sale_month_sum_l12',
+	'shop_id_month_avg_l12',
+	'item_id_month_avg_l12',
+	'item_category_id_month_avg_l12',
+	# 'city_encoded_month_avg_l12',
+	# 'year_month_avg_l12',
+	# 'item_on_sale_month_avg_l12',
+	# 'shop_vs_cat_month_avg_l12',
+	# 'shop_vs_item_month_avg_l12',
+	# 'shop_vs_city_month_avg_l12',
+	# 'city_vs_cat_month_avg_l12',
+	# 'year_vs_cat_month_avg_l12'
 ]
 
 # show features we will use for training
@@ -121,7 +135,7 @@ X_test = df.loc[df['date_block_num'] == 34, cols_to_use]
 # define model
 model = XGBRegressor(
 	max_depth=8,
-    n_estimators=100,
+    n_estimators=1000,
     min_child_weight=300, 
     colsample_bytree=0.8, 
     subsample=0.8, 
@@ -175,5 +189,3 @@ submission.sort_values(by='ID', inplace=True)
 
 if DEBUG==False:
 	submission.to_csv(os.path.join(DATA_FOLDER, 'submission.csv'), index=False)
-
-
