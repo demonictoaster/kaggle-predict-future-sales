@@ -15,7 +15,8 @@ TODO:
 - hyperparameter tuning
 - try different early stopping methods
 - save best model for ensembling 
-- hard code combination not in training sample to zero?
+- for feature selection, can feed everythin in a random forest and
+  choose by feature importance
 """
 
 ###################
@@ -50,25 +51,26 @@ cols_to_use = [
 	'date_block_num',
 	'shop_id',
 	'item_id',
+	# 'pair_not_in_train',
 	'item_category_id',
 	'city_encoded',
 	'year',
 	'month',
 	'n_days_in_month',
 	'item_cnt_month_l1',
-	'item_price_l1',
-	'revenues_l1',
-	'item_price_diff_l1',
-	'item_on_sale_l1',
-	'item_price_diff_sign_l1',
+	# 'item_price_l1',
+	# 'revenues_l1',
+	# 'item_price_diff_l1',
+	# 'item_on_sale_l1',
+	# 'item_price_diff_sign_l1',
 	'shop_id_month_avg_l1',
 	'item_id_month_avg_l1',
 	'item_category_id_month_avg_l1',
 	'city_encoded_month_avg_l1',
 	'year_month_avg_l1',
-	'item_on_sale_month_avg_l1',
+	# 'item_on_sale_month_avg_l1',
 	'shop_vs_cat_month_avg_l1',
-	'shop_vs_item_month_avg_l1',
+	# 'shop_vs_item_month_avg_l1',
 	'shop_vs_city_month_avg_l1',
 	'city_vs_cat_month_avg_l1',
 	'year_vs_cat_month_avg_l1',
@@ -77,7 +79,7 @@ cols_to_use = [
 	# 'revenues_l2',
 	'shop_id_month_avg_l2',
 	'item_id_month_avg_l2',
-	'item_category_id_month_avg_l2',
+	# 'item_category_id_month_avg_l2',
 	# 'city_encoded_month_avg_l2',
 	# 'year_month_avg_l2',
 	# 'item_on_sale_month_avg_l2',
@@ -91,7 +93,7 @@ cols_to_use = [
 	# 'revenues_l3',
 	'shop_id_month_avg_l3',
 	'item_id_month_avg_l3',
-	'item_category_id_month_avg_l3',
+	# 'item_category_id_month_avg_l3',
 	# 'city_encoded_month_avg_l3',
 	# 'year_month_avg_l3',
 	# 'item_on_sale_month_avg_l3',
@@ -100,12 +102,26 @@ cols_to_use = [
 	# 'shop_vs_city_month_avg_l3',
 	# 'city_vs_cat_month_avg_l3',
 	# 'year_vs_cat_month_avg_l3',
+	'item_cnt_month_l6',
+	# 'item_price_l6',
+	# 'revenues_l6',
+	'shop_id_month_avg_l6',
+	'item_id_month_avg_l6',
+	# 'item_category_id_month_avg_l6',
+	# 'city_encoded_month_avg_l6',
+	# 'year_month_avg_l6',
+	# 'item_on_sale_month_avg_l6',
+	# 'shop_vs_cat_month_avg_l6',
+	# 'shop_vs_item_month_avg_l6',
+	# 'shop_vs_city_month_avg_l6',
+	# 'city_vs_cat_month_avg_l6',
+	# 'year_vs_cat_month_avg_l6',
 	'item_cnt_month_l12',
 	# 'item_price_l12',
 	# 'revenues_l12',
 	'shop_id_month_avg_l12',
 	'item_id_month_avg_l12',
-	'item_category_id_month_avg_l12',
+	# 'item_category_id_month_avg_l12',
 	# 'city_encoded_month_avg_l12',
 	# 'year_month_avg_l12',
 	# 'item_on_sale_month_avg_l12',
@@ -118,7 +134,6 @@ cols_to_use = [
 
 # show features we will use for training
 df[cols_to_use].info()
-df[cols_to_use].isnull().describe()
 
 # NOTE: train/val split is done consistently with train/test split 
 # -> take last month of train data as validation set
@@ -163,7 +178,7 @@ os.system('say "Training over"')
 
 if PLOTS==True:
 	# plot feature importance
-	plot_importance(model)
+	fig = plot_importance(model)
 	plt.show()
 
 	# plot loss curves

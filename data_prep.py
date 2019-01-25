@@ -1,3 +1,4 @@
+import gc
 import itertools
 import os
 import pickle
@@ -16,6 +17,8 @@ NOTE:
   specific month). Hence should format our train data accordingly. 
 
 TODO:
+- create feature new product (i.e. sold zero across all shops and then started selling)
+  use lag for training/prediction
 - add flag pair_present_in_train (if not probably means the shop doesn't even
   sell that product). If not helping much can hardcode predictiosn to be zero in these
   cases.
@@ -29,7 +32,10 @@ TODO:
 - could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
 - create trend features (e.g. via moving averages)
 - can bin some features and treate them as categorical
-- use daily data to generate on_sale flag (e.g. price change in last 10 days)
+- use daily data to generate on_sale flag 
+  (e.g. price change in last 10 days more than x %)
+- price distance with respect to ther shops in last month
+- create downcast function
 """
 
 ###################
@@ -37,7 +43,7 @@ TODO:
 ###################
 
 DEBUG = False  # if true take only subset of data to speed up computations
-lags = [1, 2, 3, 12]
+lags = [1, 2, 3, 6, 12]
 
 ts = time.time()
 pd.set_option('display.max_columns', 20)
@@ -86,8 +92,23 @@ for i in range(34):
 all_cbns = pd.DataFrame(np.vstack(all_cbns), columns=keys)
 df = pd.merge(all_cbns, df, on=keys, how='left')
 
-# for non existing pair in train, item_count should be set to zero
+# set item_count to zero for non existing date/shop/item combinations
 df['item_cnt_month'] = df['item_cnt_month'].fillna(0)
+
+# expansion above yields some new shop/item pair that are not present in 
+# original train data (across all months). 
+# We can use this as a feature. Intuition is that shop probably doesn't
+# sell the item if pair not present. 
+# TODO: use full train set to for final submission
+pairs_in_train = train.loc[train['date_block_num'] < 33, ['shop_id', 'item_id']].drop_duplicates(keep='first')
+df = pd.merge(df, pairs_in_train, on=['shop_id', 'item_id'], how='left', indicator=True)
+df.rename(columns={'_merge':'pair_not_in_train'}, inplace=True)
+df['pair_not_in_train'], _ = pd.factorize(df['pair_not_in_train'])
+
+# do the same for the test set
+test = pd.merge(test, pairs_in_train, on=['shop_id', 'item_id'], how='left', indicator=True)
+test.rename(columns={'_merge':'pair_not_in_train'}, inplace=True)
+test['pair_not_in_train'], _ = pd.factorize(test['pair_not_in_train'])
 
 # ground truth target values clipped into [0.20] range (see description on kaggle)
 df.item_cnt_month = np.clip(df.item_cnt_month, 0, 20)
@@ -118,12 +139,14 @@ df['shop_id'] = df['shop_id'].astype(np.int16)
 df['item_id'] = df['item_id'].astype(np.int16)
 df['item_cnt_month'] = df['item_cnt_month'].astype(np.float32)
 df['item_price'] = df['item_price'].astype(np.float32)
+df['pair_not_in_train'] = df['pair_not_in_train'].astype(np.int16)
 
 # lag item_cnt_month and item_price
-df = make_lags(df, ['item_cnt_month', 'item_price'], lags)
+df = make_lags(df, ['item_cnt_month'], lags)
 
 # delete stuff we don't need anymore
 del all_cbns, tmp, test
+gc.collect()
 
 ###################
 # feature generation
@@ -134,22 +157,20 @@ del all_cbns, tmp, test
 # revenues (in 000s)
 # NOTE: price is average price during the month
 df['revenues'] = df['item_price'] * df['item_cnt_month'] / 1000
-df = make_lags(df, ['revenues'], lags)
+df = make_lags(df, ['revenues'], [1])
 
 # item category id
 items = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
 df = pd.merge(df, items.drop('item_name', axis=1), on='item_id')
 df['item_category_id'] = df['item_category_id'].astype(np.int16)
-del items
 
-# shops info: read on forum that first word is the city
-# (hard to guess if you don't speak Russian...)
+# city can be retrieved from shop name (first string)
 shops = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))	
 shops['city'] = shops['shop_name'].str.split().str.get(0)
 df = pd.merge(df, shops.drop('shop_name', axis=1), on='shop_id', how='left')
 df['city_encoded'], _ = pd.factorize(df['city'])  # label encoding
 df['city_encoded'] = df['city_encoded'].astype(np.int16)
-del shops
+df = df.drop('city', axis=1)
 
 # month, year
 df['year'] = pd.to_numeric(df['date'].astype(str).str[-4:])
@@ -163,19 +184,31 @@ df.loc[df['month'].isin([4, 6, 9, 11]), 'n_days_in_month'] = 30.
 df.loc[df['month']==2, 'n_days_in_month'] = 28.  # no leap year
 df['n_days_in_month'] = df['n_days_in_month'].astype(np.float32)
 
-# change in price relative to previous month + on_sale flag
-# NOTE: NaNs resulting form lag are replaced by zero (i.e. no change)
-df.sort_values(['shop_id','item_id', 'date_block_num'], inplace=True)
-df['item_price_diff'] = df.groupby(['shop_id', 'item_id'])['item_price'].diff()
-df['item_price_diff'].fillna(0, inplace=True)
-df['item_price_diff_sign'] = np.sign(df['item_price_diff'].fillna(0)).astype(np.int16)
-df['item_on_sale'], _ = pd.factorize(df['item_price_diff'] < 0)
-df['item_on_sale'] = df['item_on_sale'].astype(np.int16)
+# delete stuff we don't need anymore
+del items, shops
+gc.collect()
 
-df = make_lags(df, ['item_price_diff', 'item_price_diff_sign', 'item_on_sale'], [1])
-df['item_price_diff_l1'].fillna(0, inplace=True)
-df['item_price_diff_sign_l1'].fillna(0, inplace=True)
-df['item_on_sale_l1'].fillna(0, inplace=True)
+###################
+# price features
+###################
+
+tmp = df[['date_block_num', 'item_id', 'item_price']]
+
+# global average price by item 
+global_average = tmp.groupby('item_id', as_index=False).agg({'item_price': 'mean'})
+global_average = global_average.rename(columns={'item_price': 'item_price_global_avg'})
+tmp = pd.merge(tmp, global_average, on='item_id', how='left')
+
+# monthly average price by item
+month_average = tmp.groupby(['item_id', 'date_block_num'], as_index=False).agg({'item_price': 'mean'})
+month_average = month_average.rename(columns={'item_price': 'item_price_month_avg'})
+tmp = pd.merge(tmp, month_average, on=['date_block_num', 'item_id'], how='left')
+
+# TODO: once done, dont' forget to deal with NaNs for price deltas
+
+# delete stuff we don't need anymore
+del tmp, global_average, month_average
+gc.collect()
 
 ###################
 # mean encoding
@@ -188,8 +221,7 @@ cols_to_mean_encode = [
 	'item_id',
 	'item_category_id',
 	'city_encoded',
-	'year',
-	'item_on_sale'] # columns to mean-encode
+	'year'] # columns to mean-encode
 target = 'item_cnt_month'
 train_idx = df['date_block_num'].isin(np.arange(0, 33))
 k = 5
@@ -239,7 +271,11 @@ to_lag = [
 	'shop_vs_city_month_avg',
 	'city_vs_cat_month_avg',
 	'year_vs_cat_month_avg']
-df = make_lags(df, to_lag, lags)
+df = make_lags(df, to_lag, [1])
+
+# delete stuff we don't need anymore
+del target_mean
+gc.collect()
 
 ###################
 # last steps and save
@@ -254,12 +290,8 @@ for col in df.columns:
 # NOTE: lose 12 months of data if maxlag=12, might not be worth to include
 df = df[df['date_block_num'] >= max(lags)]
 
-# some variables were incorrectly transformed to float due to presence of NaN
-df['item_price_diff_sign_l1'] = df['item_price_diff_sign_l1'].astype(np.int16)
-df['item_on_sale_l1'] = df['item_on_sale_l1'].astype(np.int16)
-
+# write dataframe to folder
 df.info()
-
 if DEBUG==False:
 	#df.to_pickle(os.path.join(DATA_FOLDER, 'df.pkl'))
 	df.to_hdf(os.path.join(DATA_FOLDER, 'data_xgb_train.h5'), key='df', mode='w')
