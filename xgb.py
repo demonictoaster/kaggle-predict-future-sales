@@ -4,8 +4,11 @@ import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 from xgboost import XGBRegressor
 from xgboost import plot_importance
+
+from utils import print_columns_sorted, plot_xgb_feature_importance
 
 """
 Gradient boosted decision tree
@@ -17,6 +20,7 @@ TODO:
 - save best model for ensembling 
 - for feature selection, can feed everythin in a random forest and
   choose by feature importance
+- make parameter file
 """
 
 ###################
@@ -45,92 +49,67 @@ if DEBUG==True:
 # prepare train / validation / test sets 
 ###################
 
+#print_columns_sorted(df)
+
 # select columns to be used for training 
 # NOTE: cannot use information from the future
+# NOTE: reducing the number of feature seems to lead to better generalization
 cols_to_use = [
-	'date_block_num',
-	'shop_id',
-	'item_id',
-	# 'pair_not_in_train',
-	'item_category_id',
+	# 'ID',
 	'city_encoded',
-	'year',
-	'month',
-	'n_days_in_month',
-	'item_cnt_month_l1',
-	# 'item_price_l1',
-	# 'revenues_l1',
-	# 'item_price_diff_l1',
-	# 'item_on_sale_l1',
-	# 'item_price_diff_sign_l1',
-	'shop_id_month_avg_l1',
-	'item_id_month_avg_l1',
-	'item_category_id_month_avg_l1',
 	'city_encoded_month_avg_l1',
-	'year_month_avg_l1',
-	# 'item_on_sale_month_avg_l1',
-	'shop_vs_cat_month_avg_l1',
-	# 'shop_vs_item_month_avg_l1',
-	'shop_vs_city_month_avg_l1',
+	'city_encoded_month_avg_l12',
+	'city_encoded_month_avg_l2',
+	'city_encoded_month_avg_l3',
+	'city_encoded_month_avg_l6',
 	'city_vs_cat_month_avg_l1',
-	'year_vs_cat_month_avg_l1',
-	'item_cnt_month_l2',
-	# 'item_price_l2',
-	# 'revenues_l2',
-	'shop_id_month_avg_l2',
-	'item_id_month_avg_l2',
-	# 'item_category_id_month_avg_l2',
-	# 'city_encoded_month_avg_l2',
-	# 'year_month_avg_l2',
-	# 'item_on_sale_month_avg_l2',
-	# 'shop_vs_cat_month_avg_l2',
-	# 'shop_vs_item_month_avg_l2',
-	# 'shop_vs_city_month_avg_l2',
-	# 'city_vs_cat_month_avg_l2',
-	# 'year_vs_cat_month_avg_l2',
-	'item_cnt_month_l3',
-	# 'item_price_l3',
-	# 'revenues_l3',
-	'shop_id_month_avg_l3',
-	'item_id_month_avg_l3',
-	# 'item_category_id_month_avg_l3',
-	# 'city_encoded_month_avg_l3',
-	# 'year_month_avg_l3',
-	# 'item_on_sale_month_avg_l3',
-	# 'shop_vs_cat_month_avg_l3',
-	# 'shop_vs_item_month_avg_l3',
-	# 'shop_vs_city_month_avg_l3',
-	# 'city_vs_cat_month_avg_l3',
-	# 'year_vs_cat_month_avg_l3',
-	'item_cnt_month_l6',
-	# 'item_price_l6',
-	# 'revenues_l6',
-	'shop_id_month_avg_l6',
-	'item_id_month_avg_l6',
-	# 'item_category_id_month_avg_l6',
-	# 'city_encoded_month_avg_l6',
-	# 'year_month_avg_l6',
-	# 'item_on_sale_month_avg_l6',
-	# 'shop_vs_cat_month_avg_l6',
-	# 'shop_vs_item_month_avg_l6',
-	# 'shop_vs_city_month_avg_l6',
-	# 'city_vs_cat_month_avg_l6',
-	# 'year_vs_cat_month_avg_l6',
+	# 'date',
+	'date_block_num',
+	'item_category_id',
+	'item_category_id_month_avg_l1',
+	'item_category_id_month_avg_l12',
+	'item_category_id_month_avg_l2',
+	'item_category_id_month_avg_l3',
+	'item_category_id_month_avg_l6',
+	# 'item_cnt_month',
+	'item_cnt_month_l1',
 	'item_cnt_month_l12',
-	# 'item_price_l12',
-	# 'revenues_l12',
-	'shop_id_month_avg_l12',
+	'item_cnt_month_l2',
+	'item_cnt_month_l3',
+	'item_cnt_month_l6',
+	'item_id',
+	'item_id_month_avg_l1',
 	'item_id_month_avg_l12',
-	# 'item_category_id_month_avg_l12',
-	# 'city_encoded_month_avg_l12',
-	# 'year_month_avg_l12',
-	# 'item_on_sale_month_avg_l12',
-	# 'shop_vs_cat_month_avg_l12',
-	# 'shop_vs_item_month_avg_l12',
-	# 'shop_vs_city_month_avg_l12',
-	# 'city_vs_cat_month_avg_l12',
-	# 'year_vs_cat_month_avg_l12'
-]
+	'item_id_month_avg_l2',
+	'item_id_month_avg_l3',
+	'item_id_month_avg_l6',
+	'month',
+	'month_avg_l1',
+	'n_days_in_month',
+	# 'pair_not_in_train',
+	# 'price',
+	# 'price_month_avg',
+	'price_month_avg_diff_global_avg_l1',
+	'price_month_avg_diff_last_six_month_l1',
+	'price_month_avg_diff_prev_month_l1',
+	'price_vs_month_avg_l1',
+	'revenues_l1',
+	'shop_id',
+	'shop_id_month_avg_l1',
+	'shop_id_month_avg_l12',
+	'shop_id_month_avg_l2',
+	'shop_id_month_avg_l3',
+	'shop_id_month_avg_l6',
+	'shop_vs_cat_month_avg_l1',
+	'shop_vs_city_month_avg_l1',
+	'shop_vs_item_month_avg_l1',
+	'year',
+	'year_month_avg_l1',
+	'year_month_avg_l12',
+	'year_month_avg_l2',
+	'year_month_avg_l3',
+	'year_month_avg_l6',
+	'year_vs_cat_month_avg_l1',]
 
 # show features we will use for training
 df[cols_to_use].info()
@@ -178,8 +157,7 @@ os.system('say "Training over"')
 
 if PLOTS==True:
 	# plot feature importance
-	fig = plot_importance(model)
-	plt.show()
+	plot_xgb_feature_importance(model, cols_to_use)
 
 	# plot loss curves
 	loss = model.evals_result()

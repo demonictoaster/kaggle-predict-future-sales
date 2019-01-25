@@ -36,6 +36,9 @@ TODO:
   (e.g. price change in last 10 days more than x %)
 - price distance with respect to ther shops in last month
 - create downcast function
+- keep NaNs in price data?
+- function to remove NaNs
+- function to drop columns
 """
 
 ###################
@@ -93,7 +96,7 @@ all_cbns = pd.DataFrame(np.vstack(all_cbns), columns=keys)
 df = pd.merge(all_cbns, df, on=keys, how='left')
 
 # set item_count to zero for non existing date/shop/item combinations
-df['item_cnt_month'] = df['item_cnt_month'].fillna(0)
+df['item_cnt_month'].fillna(0, inplace=True)
 
 # expansion above yields some new shop/item pair that are not present in 
 # original train data (across all months). 
@@ -122,8 +125,9 @@ tmp = {'date_block_num':np.arange(34), 'date':tmp[0:34]}
 tmp = pd.DataFrame(tmp)
 df = pd.merge(df, tmp, on='date_block_num', how='left')
 
-# winsorize price data to get rid of outlier in EDA and downcast to 16bit
+# winsorize price data to get rid of outlier in EDA
 df['item_price'] = stats.mstats.winsorize(df.item_price, limits=(0,0.01))
+df = df.rename(columns={'item_price': 'price'})
 
 # append test set to train set to make lag creation easier
 test['date_block_num'] = 34
@@ -138,7 +142,7 @@ df['date_block_num'] = df['date_block_num'].astype(np.int16)
 df['shop_id'] = df['shop_id'].astype(np.int16)
 df['item_id'] = df['item_id'].astype(np.int16)
 df['item_cnt_month'] = df['item_cnt_month'].astype(np.float32)
-df['item_price'] = df['item_price'].astype(np.float32)
+df['price'] = df['price'].astype(np.float32)
 df['pair_not_in_train'] = df['pair_not_in_train'].astype(np.int16)
 
 # lag item_cnt_month and item_price
@@ -156,8 +160,9 @@ gc.collect()
 
 # revenues (in 000s)
 # NOTE: price is average price during the month
-df['revenues'] = df['item_price'] * df['item_cnt_month'] / 1000
+df['revenues'] = df['price'] * df['item_cnt_month'] / 1000
 df = make_lags(df, ['revenues'], [1])
+df = df.drop('revenues', axis=1)
 
 # item category id
 items = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -189,33 +194,92 @@ del items, shops
 gc.collect()
 
 ###################
-# price features
+# price features 
 ###################
 
-tmp = df[['date_block_num', 'item_id', 'item_price']]
-
 # global average price by item 
-global_average = tmp.groupby('item_id', as_index=False).agg({'item_price': 'mean'})
-global_average = global_average.rename(columns={'item_price': 'item_price_global_avg'})
-tmp = pd.merge(tmp, global_average, on='item_id', how='left')
+global_avg = df.groupby('item_id', as_index=False).agg({'price': 'mean'})
+global_avg = global_avg.rename(columns={'price': 'price_global_avg'})
 
-# monthly average price by item
-month_average = tmp.groupby(['item_id', 'date_block_num'], as_index=False).agg({'item_price': 'mean'})
-month_average = month_average.rename(columns={'item_price': 'item_price_month_avg'})
-tmp = pd.merge(tmp, month_average, on=['date_block_num', 'item_id'], how='left')
+# monthly average price by item and 6 month lags
+month_avg = df.groupby(['item_id', 'date_block_num'], as_index=False).agg({'price': 'mean'})
+month_avg = month_avg.rename(columns={'price': 'price_month_avg'})
+month_avg = make_lags_by(df=month_avg, 
+				   cols=['price_month_avg'], 
+				   lags=[1,2,3,4,5,6], 
+				   time_idx=['date_block_num'], 
+				   by=['item_id'])
 
-# TODO: once done, dont' forget to deal with NaNs for price deltas
+# difference in last 6 months by item (use available prices in that range)
+# NOTE: a bit slow, maybe there is a faster way...
+def price_diff_in_last_six_month(row):
+	row = row.copy()
+	row.sort_index(ascending=True, inplace=True)
+	recent = row.loc[('price' in s for s in row.index)].first_valid_index()
+	old = row.loc[('price' in s for s in row.index)].last_valid_index()
+	if old is None:
+		return 0
+	if row[old] != 0:
+		diff = row[recent] / row[old] - 1
+		return diff
+	else:
+		return 0
+
+month_avg['price_month_avg_diff_last_six_month'] = \
+	month_avg.apply(price_diff_in_last_six_month, axis=1)
+
+# difference with respect to previous month by item
+month_avg['price_month_avg_diff_prev_month'] = \
+	month_avg['price_month_avg'] / month_avg['price_month_avg_l1'] - 1
+
+# difference between monthly average and global average
+month_avg = pd.merge(month_avg, global_avg, on='item_id', how='left')
+month_avg['price_month_avg_diff_global_avg'] = \
+	month_avg['price_month_avg'] / month_avg['price_global_avg'] - 1
+
+# keep relevant columns and merge with main dataframe
+month_avg = month_avg[[
+	'item_id', 
+	'date_block_num',
+	'price_month_avg', 
+	'price_month_avg_diff_prev_month',
+	'price_month_avg_diff_last_six_month',
+	'price_month_avg_diff_global_avg']]
+df = pd.merge(df, month_avg, on=['date_block_num', 'item_id'], how='left')
+
+# delta compared to other shops
+df['price_vs_month_avg'] = df['price'] / df['price_month_avg'] - 1 
+
+# create lags and get rid of what we don't need
+to_lag = [
+	'price_month_avg_diff_prev_month',
+	'price_month_avg_diff_last_six_month',
+	'price_month_avg_diff_global_avg',
+	'price_vs_month_avg']
+df = make_lags_by(df=df, cols=to_lag, lags=[1], 
+	time_idx=['date_block_num'], by=['shop_id','item_id'])
+df = df.drop(to_lag, axis=1)
+
+# deal with NaNs for price deltas
+cols = [col + '_l1' for col in to_lag]
+for col in cols:
+	df[col].fillna(0, inplace=True)
 
 # delete stuff we don't need anymore
-del tmp, global_average, month_average
-gc.collect()
+del global_avg, month_avg, to_lag
+gc.collect();
 
 ###################
 # mean encoding
 ###################
 
-# NOTE: should be calculated on train data only (exclude validation set)
-# NOTE:  tradtional mean encoding doesn't work well
+# by date
+mean_by_date = df.groupby('date_block_num', as_index=False)['item_cnt_month'].mean()
+mean_by_date.rename(columns={'item_cnt_month': 'month_avg'}, inplace=True)
+df = pd.merge(df, mean_by_date, on='date_block_num', how='left')
+df = make_lags(df, ['month_avg'], [1])
+
+# by date and some categorical feature
 cols_to_mean_encode = [
 	'shop_id',
 	'item_id',
@@ -236,6 +300,14 @@ df = make_lags(df, [col + '_month_avg' for col in cols_to_mean_encode], lags)
 # 	cor = np.corrcoef(df.loc[train_idx, col + '_month_avg'].values, df.loc[train_idx, 'item_cnt_month'].values)[0][1]
 # 	print(cor)
 
+# drop columns we don't need
+to_drop = ['month_avg'] + [col + '_month_avg' for col in cols_to_mean_encode]
+df = df.drop(to_drop, axis=1)
+
+# delete stuff
+del mean_by_date, cols_to_mean_encode
+gc.collect();
+
 ###################
 # interaction encoding
 ###################
@@ -251,14 +323,14 @@ target_mean.rename(columns={'item_cnt_month': 'shop_vs_item_month_avg'}, inplace
 df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'item_id'], how='left')
 
 # shop_id vs city
-target_mean = df.groupby(['date_block_num', 'shop_id', 'city'], as_index=False)['item_cnt_month'].mean()
+target_mean = df.groupby(['date_block_num', 'shop_id', 'city_encoded'], as_index=False)['item_cnt_month'].mean()
 target_mean.rename(columns={'item_cnt_month': 'shop_vs_city_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'city'], how='left')
+df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'city_encoded'], how='left')
 
 # city vs item_category
-target_mean = df.groupby(['date_block_num', 'city', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
+target_mean = df.groupby(['date_block_num', 'city_encoded', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
 target_mean.rename(columns={'item_cnt_month': 'city_vs_cat_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'city', 'item_category_id'], how='left')
+df = pd.merge(df, target_mean, on=['date_block_num', 'city_encoded', 'item_category_id'], how='left')
 
 # month vs item_category
 target_mean = df.groupby(['date_block_num', 'year', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
@@ -273,8 +345,12 @@ to_lag = [
 	'year_vs_cat_month_avg']
 df = make_lags(df, to_lag, [1])
 
+# drop columns we don't need
+to_drop = to_lag
+df = df.drop(to_drop, axis=1)
+
 # delete stuff we don't need anymore
-del target_mean
+del target_mean, to_drop, to_lag
 gc.collect()
 
 ###################
@@ -300,4 +376,4 @@ if DEBUG==False:
 # execution time
 spent = str(np.round((time.time() - ts) / 60, 2))
 print('\n---- Execution time: ' + spent + " min ----")
-os.system('say "Data prep over"')
+os.system('say "Data prep over"');

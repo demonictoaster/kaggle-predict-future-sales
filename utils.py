@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+
+import seaborn as sns
 from sklearn.model_selection import KFold
 
 """
@@ -9,7 +11,10 @@ A bunch of functions used for feature generation:
  - mean_encoding(): mean encoding without regularization
  - mean_encoding_kold(): mean encoding over k-folds
  - mean_encoding_month(): mean envoding over month
- - make_lags(): create lagged values for specified cols
+ - make_lags(): create lagged values for specified cols by shop_id and item_id
+ - make_lags_by): create lagged values for specified cols
+ 				  (time_idx and group_by to be specified manually)
+ - print_columns_sorted(): prints column names conveniently
 
 """
 
@@ -53,3 +58,33 @@ def make_lags(df, cols, lags):
 		tmp_lagged = tmp_lagged.rename(columns=dict(zip(cols, new_col_names)))
 		df = pd.merge(df, tmp_lagged, on=['shop_id', 'item_id', 'date_block_num'], how='left')
 	return df
+
+def make_lags_by(df, cols, lags, time_idx, by):
+	tmp = df[time_idx + by + cols]
+	for lag in lags:
+		tmp_lagged = tmp.copy()
+		tmp_lagged[time_idx] += lag
+		new_col_names = [col + "_l" + str(lag) for col in cols]
+		tmp_lagged = tmp_lagged.rename(columns=dict(zip(cols, new_col_names)))
+		df = pd.merge(df, tmp_lagged, on=time_idx+by, how='left')
+	return df
+
+def print_columns_sorted(df):
+	cols = sorted(df.columns.tolist())
+	for col in cols:
+		print('\'' + col + '\'' + ',')
+
+def plot_xgb_feature_importance(booster,feature_names):
+	features = feature_names
+	importance = booster.feature_importances_
+	to_plot = pd.DataFrame({'features': features, 'importance': importance})
+	to_plot.sort_values('importance', ascending=False, inplace=True)
+	sns.set(font_scale=0.8)
+	plt.figure(figsize=(10,7))
+	fig = sns.barplot(x='importance', y='features', data=to_plot)
+	for item in fig.get_xticklabels():
+		item.set_rotation(90)
+	plt.subplot(111)
+	plt.subplots_adjust(left=0.25, bottom=0.1, right=0.9, 
+		 				top=0.9, wspace=0.05, hspace=0.05)
+	plt.show()
