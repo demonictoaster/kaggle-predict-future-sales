@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import KFold
 
@@ -13,8 +14,12 @@ A bunch of functions used for feature generation:
  - mean_encoding_month(): mean envoding over month
  - make_lags(): create lagged values for specified cols by shop_id and item_id
  - make_lags_by): create lagged values for specified cols
- 				  (time_idx and group_by to be specified manually)
+				  (time_idx and group_by to be specified manually)
  - print_columns_sorted(): prints column names conveniently
+
+ code borrowed from https://www.kaggle.com/dlarionov/feature-engineering-xgboost
+ - time_since_last_sale_shop_item(): time since last sale by shop and item
+ - time_since_last_sale_item(): time since last sale by item
 
 """
 
@@ -86,5 +91,5 @@ def plot_xgb_feature_importance(booster,feature_names):
 		item.set_rotation(90)
 	plt.subplot(111)
 	plt.subplots_adjust(left=0.25, bottom=0.1, right=0.9, 
-		 				top=0.9, wspace=0.05, hspace=0.05)
+						top=0.9, wspace=0.05, hspace=0.05)
 	plt.show()

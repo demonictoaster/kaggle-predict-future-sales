@@ -150,13 +150,11 @@ df = make_lags(df, ['item_cnt_month'], lags)
 
 # delete stuff we don't need anymore
 del all_cbns, tmp, test
-gc.collect()
+gc.collect();
 
 ###################
-# feature generation
+# basic features
 ###################
-
-# NOTE: scaling irrelevant for tree-based models
 
 # revenues (in 000s)
 # NOTE: price is average price during the month
@@ -169,12 +167,24 @@ items = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
 df = pd.merge(df, items.drop('item_name', axis=1), on='item_id')
 df['item_category_id'] = df['item_category_id'].astype(np.int16)
 
+# category type and subtype are included in item category name
+# (found this on Kaggle)
+cats = pd.read_csv(os.path.join(DATA_FOLDER, 'item_categories.csv'))
+cats['split'] = cats['item_category_name'].str.split('-')
+cats['item_type'] = cats['split'].map(lambda x: x[0].strip())
+cats['item_type_id'], _ = pd.factorize(cats['item_type'])
+cats['item_subtype'] = cats['split'].map(lambda x: x[1].strip() if len(x) > 1 else x[0].strip())
+cats['item_subtype_id'], _ = pd.factorize(cats['item_subtype'])
+cats = cats[['item_category_id', 'item_type_id', 'item_subtype_id']]
+df = pd.merge(df, cats, on='item_category_id', how='left')
+
 # city can be retrieved from shop name (first string)
+# (found this on kaggle)
 shops = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))	
 shops['city'] = shops['shop_name'].str.split().str.get(0)
 df = pd.merge(df, shops.drop('shop_name', axis=1), on='shop_id', how='left')
-df['city_encoded'], _ = pd.factorize(df['city'])  # label encoding
-df['city_encoded'] = df['city_encoded'].astype(np.int16)
+df['city_id'], _ = pd.factorize(df['city'])  # label encoding
+df['city_id'] = df['city_id'].astype(np.int16)
 df = df.drop('city', axis=1)
 
 # month, year
@@ -189,8 +199,17 @@ df.loc[df['month'].isin([4, 6, 9, 11]), 'n_days_in_month'] = 30.
 df.loc[df['month']==2, 'n_days_in_month'] = 28.  # no leap year
 df['n_days_in_month'] = df['n_days_in_month'].astype(np.float32)
 
+# first sale by item and by item/shop
+df['item_first_sale'] = df.groupby('item_id')['date_block_num'].transform('min')
+df['item_shop_first_sale'] = df.groupby(['item_id','shop_id'])['date_block_num'].transform('min')
+
+# time since first sale
+df['item_sold_since'] = df['date_block_num'] - df['item_first_sale']
+df['item_shop_sold_since'] = df['date_block_num'] - df['item_shop_first_sale']
+df = df.drop(['item_first_sale', 'item_shop_first_sale'], axis=1)
+
 # delete stuff we don't need anymore
-del items, shops
+del items, cats, shops
 gc.collect()
 
 ###################
@@ -269,6 +288,8 @@ for col in cols:
 del global_avg, month_avg, to_lag
 gc.collect();
 
+
+
 ###################
 # mean encoding
 ###################
@@ -284,8 +305,7 @@ cols_to_mean_encode = [
 	'shop_id',
 	'item_id',
 	'item_category_id',
-	'city_encoded',
-	'year'] # columns to mean-encode
+	'city_id'] # columns to mean-encode
 target = 'item_cnt_month'
 train_idx = df['date_block_num'].isin(np.arange(0, 33))
 k = 5
@@ -323,19 +343,24 @@ target_mean.rename(columns={'item_cnt_month': 'shop_vs_item_month_avg'}, inplace
 df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'item_id'], how='left')
 
 # shop_id vs city
-target_mean = df.groupby(['date_block_num', 'shop_id', 'city_encoded'], as_index=False)['item_cnt_month'].mean()
+target_mean = df.groupby(['date_block_num', 'shop_id', 'city_id'], as_index=False)['item_cnt_month'].mean()
 target_mean.rename(columns={'item_cnt_month': 'shop_vs_city_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'city_encoded'], how='left')
+df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'city_id'], how='left')
 
 # city vs item_category
-target_mean = df.groupby(['date_block_num', 'city_encoded', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
+target_mean = df.groupby(['date_block_num', 'city_id', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
 target_mean.rename(columns={'item_cnt_month': 'city_vs_cat_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'city_encoded', 'item_category_id'], how='left')
+df = pd.merge(df, target_mean, on=['date_block_num', 'city_id', 'item_category_id'], how='left')
 
 # month vs item_category
 target_mean = df.groupby(['date_block_num', 'year', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
 target_mean.rename(columns={'item_cnt_month': 'year_vs_cat_month_avg'}, inplace=True)
 df = pd.merge(df, target_mean, on=['date_block_num', 'year', 'item_category_id'], how='left')
+
+# item_id vs city
+target_mean = df.groupby(['date_block_num', 'item_id', 'city_id'], as_index=False)['item_cnt_month'].mean()
+target_mean.rename(columns={'item_cnt_month': 'item_vs_city_month_avg'}, inplace=True)
+df = pd.merge(df, target_mean, on=['date_block_num', 'item_id', 'city_id'], how='left')
 
 to_lag = [
 	'shop_vs_cat_month_avg',

@@ -49,28 +49,27 @@ if DEBUG==True:
 # prepare train / validation / test sets 
 ###################
 
-#print_columns_sorted(df)
-
 # select columns to be used for training 
 # NOTE: cannot use information from the future
 # NOTE: reducing the number of feature seems to lead to better generalization
+#print_columns_sorted(df)
 cols_to_use = [
 	# 'ID',
-	'city_encoded',
-	'city_encoded_month_avg_l1',
-	'city_encoded_month_avg_l12',
-	'city_encoded_month_avg_l2',
-	'city_encoded_month_avg_l3',
-	'city_encoded_month_avg_l6',
-	'city_vs_cat_month_avg_l1',
+	'city_id',
+	'city_id_month_avg_l1',
+	# 'city_id_month_avg_l12',
+	# 'city_id_month_avg_l2',
+	# 'city_id_month_avg_l3',
+	# 'city_id_month_avg_l6',
+	# 'city_vs_cat_month_avg_l1',
 	# 'date',
 	'date_block_num',
 	'item_category_id',
 	'item_category_id_month_avg_l1',
-	'item_category_id_month_avg_l12',
-	'item_category_id_month_avg_l2',
-	'item_category_id_month_avg_l3',
-	'item_category_id_month_avg_l6',
+	# 'item_category_id_month_avg_l12',
+	# 'item_category_id_month_avg_l2',
+	# 'item_category_id_month_avg_l3',
+	# 'item_category_id_month_avg_l6',
 	# 'item_cnt_month',
 	'item_cnt_month_l1',
 	'item_cnt_month_l12',
@@ -79,10 +78,14 @@ cols_to_use = [
 	'item_cnt_month_l6',
 	'item_id',
 	'item_id_month_avg_l1',
-	'item_id_month_avg_l12',
+	# 'item_id_month_avg_l12',
 	'item_id_month_avg_l2',
 	'item_id_month_avg_l3',
 	'item_id_month_avg_l6',
+	'item_shop_sold_since',
+	'item_sold_since',
+	'item_subtype_id',
+	'item_type_id',
 	'month',
 	'month_avg_l1',
 	'n_days_in_month',
@@ -93,7 +96,7 @@ cols_to_use = [
 	'price_month_avg_diff_last_six_month_l1',
 	'price_month_avg_diff_prev_month_l1',
 	'price_vs_month_avg_l1',
-	'revenues_l1',
+	# 'revenues_l1',
 	'shop_id',
 	'shop_id_month_avg_l1',
 	'shop_id_month_avg_l12',
@@ -101,15 +104,11 @@ cols_to_use = [
 	'shop_id_month_avg_l3',
 	'shop_id_month_avg_l6',
 	'shop_vs_cat_month_avg_l1',
-	'shop_vs_city_month_avg_l1',
-	'shop_vs_item_month_avg_l1',
-	'year',
-	'year_month_avg_l1',
-	'year_month_avg_l12',
-	'year_month_avg_l2',
-	'year_month_avg_l3',
-	'year_month_avg_l6',
-	'year_vs_cat_month_avg_l1',]
+	# 'shop_vs_city_month_avg_l1',
+	# 'shop_vs_item_month_avg_l1',
+	# 'year',
+	# 'year_vs_cat_month_avg_l1'
+	]
 
 # show features we will use for training
 df[cols_to_use].info()
