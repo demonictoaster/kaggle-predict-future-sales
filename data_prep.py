@@ -17,25 +17,17 @@ NOTE:
   specific month). Hence should format our train data accordingly. 
 
 TODO:
-- create feature new product (i.e. sold zero across all shops and then started selling)
-  use lag for training/prediction
 - add flag pair_present_in_train (if not probably means the shop doesn't even
   sell that product). If not helping much can hardcode predictiosn to be zero in these
   cases.
 - check negative item prices (fill with median by block_id, shop_id and item_id)
 - revenues by shop/date_block_num rather that raw
-- make functions for interaction encoding
 - try using only pairs present in test data rather than all pair for each month
-- instead of casting to 16bit in the end, do it in the beginning to speed up things
-- do some normalization (if plan to use linear models or knn)
-- take logs and square transforms (for linear models)
 - could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
 - create trend features (e.g. via moving averages)
 - can bin some features and treate them as categorical
 - use daily data to generate on_sale flag 
   (e.g. price change in last 10 days more than x %)
-- price distance with respect to ther shops in last month
-- create downcast function
 - keep NaNs in price data?
 - function to remove NaNs
 - function to drop columns
@@ -45,7 +37,7 @@ TODO:
 # setup
 ###################
 
-DEBUG = False  # if true take only subset of data to speed up computations
+DEBUG = True  # if true take only subset of data to speed up computations
 lags = [1, 2, 3, 6, 12]
 
 ts = time.time()
@@ -137,13 +129,8 @@ df = pd.concat([df, test], ignore_index=True, sort=False,
 df['ID'].fillna(-999, inplace=True)  # to be able to convert to integer
 df['ID'] = df['ID'].astype(np.int32)
 
-# downcast to 16 / 32 bits where possible
-df['date_block_num'] = df['date_block_num'].astype(np.int16)
-df['shop_id'] = df['shop_id'].astype(np.int16)
-df['item_id'] = df['item_id'].astype(np.int16)
-df['item_cnt_month'] = df['item_cnt_month'].astype(np.float32)
-df['price'] = df['price'].astype(np.float32)
-df['pair_not_in_train'] = df['pair_not_in_train'].astype(np.int16)
+# downcast to 8- / 16- / 32- bit where possible
+df = downcast(df)
 
 # lag item_cnt_month and item_price
 df = make_lags(df, ['item_cnt_month'], lags)
@@ -165,7 +152,6 @@ df = df.drop('revenues', axis=1)
 # item category id
 items = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
 df = pd.merge(df, items.drop('item_name', axis=1), on='item_id')
-df['item_category_id'] = df['item_category_id'].astype(np.int16)
 
 # category type and subtype are included in item category name
 # (found this on Kaggle)
@@ -184,20 +170,16 @@ shops = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))
 shops['city'] = shops['shop_name'].str.split().str.get(0)
 df = pd.merge(df, shops.drop('shop_name', axis=1), on='shop_id', how='left')
 df['city_id'], _ = pd.factorize(df['city'])  # label encoding
-df['city_id'] = df['city_id'].astype(np.int16)
 df = df.drop('city', axis=1)
 
 # month, year
 df['year'] = pd.to_numeric(df['date'].astype(str).str[-4:])
 df['month'] = pd.to_numeric(df['date'].astype(str).str[3:5])
-df['year'] = df['year'].astype(np.int16)
-df['month'] = df['month'].astype(np.int16)
 
 # number of days in month (should have a small impact on sales)
 df['n_days_in_month'] = 31.
 df.loc[df['month'].isin([4, 6, 9, 11]), 'n_days_in_month'] = 30.
 df.loc[df['month']==2, 'n_days_in_month'] = 28.  # no leap year
-df['n_days_in_month'] = df['n_days_in_month'].astype(np.float32)
 
 # first sale by item and by item/shop
 df['item_first_sale'] = df.groupby('item_id')['date_block_num'].transform('min')
@@ -207,6 +189,9 @@ df['item_shop_first_sale'] = df.groupby(['item_id','shop_id'])['date_block_num']
 df['item_sold_since'] = df['date_block_num'] - df['item_first_sale']
 df['item_shop_sold_since'] = df['date_block_num'] - df['item_shop_first_sale']
 df = df.drop(['item_first_sale', 'item_shop_first_sale'], axis=1)
+
+# downcast to 8- / 16- / 32- bit where possible
+df = downcast(df)
 
 # delete stuff we don't need anymore
 del items, cats, shops
@@ -268,6 +253,9 @@ df = pd.merge(df, month_avg, on=['date_block_num', 'item_id'], how='left')
 
 # delta compared to other shops
 df['price_vs_month_avg'] = df['price'] / df['price_month_avg'] - 1 
+
+# downcast to 8- / 16- / 32- bit where possible
+df = downcast(df)
 
 # create lags and get rid of what we don't need
 to_lag = [
@@ -332,42 +320,33 @@ gc.collect();
 # interaction encoding
 ###################
 
-# shop_id vs item_category
-target_mean = df.groupby(['date_block_num', 'shop_id', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
-target_mean.rename(columns={'item_cnt_month': 'shop_vs_cat_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'item_category_id'], how='left')
+def mean_encoding_by(df, target, by, new_var_name):
+	target_mean = df.groupby(by, as_index=False)[target].mean()
+	target_mean.rename(columns={target: new_var_name}, inplace=True)
+	df = pd.merge(df, target_mean, on=by, how='left')
+	return df
 
-# shop_id vs item_id
-target_mean = df.groupby(['date_block_num', 'shop_id', 'item_id'], as_index=False)['item_cnt_month'].mean()
-target_mean.rename(columns={'item_cnt_month': 'shop_vs_item_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'item_id'], how='left')
+df = mean_encoding_by(df, 'item_cnt_month', 
+	['date_block_num', 'shop_id', 'item_category_id'], 'shop_vs_cat_month_avg')
 
-# shop_id vs city
-target_mean = df.groupby(['date_block_num', 'shop_id', 'city_id'], as_index=False)['item_cnt_month'].mean()
-target_mean.rename(columns={'item_cnt_month': 'shop_vs_city_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'shop_id', 'city_id'], how='left')
+df = mean_encoding_by(df, 'item_cnt_month', 
+	['date_block_num', 'shop_id', 'item_id'], 'shop_vs_item_month_avg')
 
-# city vs item_category
-target_mean = df.groupby(['date_block_num', 'city_id', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
-target_mean.rename(columns={'item_cnt_month': 'city_vs_cat_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'city_id', 'item_category_id'], how='left')
+df = mean_encoding_by(df, 'item_cnt_month', 
+	['date_block_num', 'shop_id', 'city_id'], 'shop_vs_city_month_avg')
 
-# month vs item_category
-target_mean = df.groupby(['date_block_num', 'year', 'item_category_id'], as_index=False)['item_cnt_month'].mean()
-target_mean.rename(columns={'item_cnt_month': 'year_vs_cat_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'year', 'item_category_id'], how='left')
+df = mean_encoding_by(df, 'item_cnt_month', 
+	['date_block_num', 'city_id', 'item_category_id'], 'city_vs_cat_month_avg')
 
-# item_id vs city
-target_mean = df.groupby(['date_block_num', 'item_id', 'city_id'], as_index=False)['item_cnt_month'].mean()
-target_mean.rename(columns={'item_cnt_month': 'item_vs_city_month_avg'}, inplace=True)
-df = pd.merge(df, target_mean, on=['date_block_num', 'item_id', 'city_id'], how='left')
+df = mean_encoding_by(df, 'item_cnt_month', 
+	['date_block_num', 'item_id', 'city_id'], 'item_vs_city_month_avg')
 
 to_lag = [
 	'shop_vs_cat_month_avg',
 	'shop_vs_item_month_avg',
 	'shop_vs_city_month_avg',
 	'city_vs_cat_month_avg',
-	'year_vs_cat_month_avg']
+	'item_vs_city_month_avg']
 df = make_lags(df, to_lag, [1])
 
 # drop columns we don't need
@@ -375,8 +354,8 @@ to_drop = to_lag
 df = df.drop(to_drop, axis=1)
 
 # delete stuff we don't need anymore
-del target_mean, to_drop, to_lag
-gc.collect()
+del to_drop, to_lag
+gc.collect();
 
 ###################
 # last steps and save

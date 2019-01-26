@@ -21,6 +21,7 @@ TODO:
 - for feature selection, can feed everythin in a random forest and
   choose by feature importance
 - make parameter file
+- item_type_id weird importance
 """
 
 ###################
@@ -86,6 +87,7 @@ cols_to_use = [
 	'item_sold_since',
 	'item_subtype_id',
 	'item_type_id',
+	'item_vs_city_month_avg_l1',
 	'month',
 	'month_avg_l1',
 	'n_days_in_month',

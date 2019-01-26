@@ -9,6 +9,7 @@ from sklearn.model_selection import KFold
 
 A bunch of functions used for feature generation:
 
+ - downcast(): downcast numerical dtypes to smallest possible
  - mean_encoding(): mean encoding without regularization
  - mean_encoding_kold(): mean encoding over k-folds
  - mean_encoding_month(): mean envoding over month
@@ -17,15 +18,22 @@ A bunch of functions used for feature generation:
 				  (time_idx and group_by to be specified manually)
  - print_columns_sorted(): prints column names conveniently
 
- code borrowed from https://www.kaggle.com/dlarionov/feature-engineering-xgboost
- - time_since_last_sale_shop_item(): time since last sale by shop and item
- - time_since_last_sale_item(): time since last sale by item
-
 """
 
 ###################
 # mean encoding
 ###################
+
+def downcast(df):
+	floats = ['float32', 'float64']
+	integers = ['int16', 'int32', 'int64']
+	for col in df.columns:
+		col_dtype = df[col].dtype
+		if col_dtype in floats:
+			df[col] = pd.to_numeric(df[col], downcast='float')
+		if col_dtype in integers:
+			df[col] = pd.to_numeric(df[col], downcast='integer')
+	return df
 
 def mean_encoding(df, cols, target, train_idx):
 	train = df.loc[train_idx, cols + [target]]
