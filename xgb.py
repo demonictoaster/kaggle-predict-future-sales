@@ -18,9 +18,9 @@ TODO:
 - hyperparameter tuning
 - try different early stopping methods
 - save best model for ensembling 
-- for feature selection, can feed everythin in a random forest and
+- for feature selection, can feed everything in a random forest and
   choose by feature importance
-- make parameter file
+- make parameter files
 - item_type_id weird importance
 """
 
@@ -79,7 +79,7 @@ cols_to_use = [
 	'item_cnt_month_l6',
 	'item_id',
 	'item_id_month_avg_l1',
-	# 'item_id_month_avg_l12',
+	'item_id_month_avg_l12',
 	'item_id_month_avg_l2',
 	'item_id_month_avg_l3',
 	'item_id_month_avg_l6',

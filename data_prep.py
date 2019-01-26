@@ -17,11 +17,8 @@ NOTE:
   specific month). Hence should format our train data accordingly. 
 
 TODO:
-- add flag pair_present_in_train (if not probably means the shop doesn't even
-  sell that product). If not helping much can hardcode predictiosn to be zero in these
-  cases.
 - check negative item prices (fill with median by block_id, shop_id and item_id)
-- revenues by shop/date_block_num rather that raw
+- diff in revenues by shop/date_block_num rather than raw
 - try using only pairs present in test data rather than all pair for each month
 - could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
 - create trend features (e.g. via moving averages)
@@ -37,7 +34,7 @@ TODO:
 # setup
 ###################
 
-DEBUG = True  # if true take only subset of data to speed up computations
+DEBUG = False  # if true take only subset of data to speed up computations
 lags = [1, 2, 3, 6, 12]
 
 ts = time.time()
