@@ -20,10 +20,6 @@ A bunch of functions used for feature generation:
 
 """
 
-###################
-# mean encoding
-###################
-
 def downcast(df):
 	floats = ['float32', 'float64']
 	integers = ['int16', 'int32', 'int64']
