@@ -1,3 +1,4 @@
+import datetime
 import gc
 import itertools
 import os
@@ -206,6 +207,23 @@ gc.collect();
 ###################
 # price features 
 ###################
+
+# price changes (take log returns so can sum returns for aggregation)
+train['date_id'] = train['date'].str.split(pat='.')
+train['date_id'] = train['date_id'].apply(lambda x:x[2]) + \
+				   train['date_id'].apply(lambda x:x[1]) + \
+				   train['date_id'].apply(lambda x:x[0])
+train['date_id'] = train['date_id'].astype(np.int16)
+train.sort_values(by=['shop_id', 'item_id', 'date_id'], inplace=True)
+train['price_prev'] = train.groupby(['shop_id', 'item_id'])['item_price'].shift()
+train['price_diff'] = np.log(train['item_price'] / train['price_prev'])
+train['price_diff'].fillna(0, inplace=True)
+
+# since we make forecasts for next month, only changes at end of month mater
+# (assumption is that price cuts will matter only in the next few days)
+train['day'] = pd.to_numeric(train['date'].astype(str).str[:2])
+train['price_diff_eom'] = np.where(train['day'] > 24, train['price_diff'], 0)
+
 
 # global average price by item 
 global_avg = train.groupby('item_id', as_index=False).agg({'item_price': 'mean'})
