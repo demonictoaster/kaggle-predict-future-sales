@@ -8,6 +8,7 @@ import time
 import numpy as np
 import pandas as pd
 from scipy import stats
+from sklearn.preprocessing import KBinsDiscretizer
 
 from utils import *
 
@@ -19,15 +20,12 @@ NOTE:
   (I would not have spotted the small Russian language subtleties!) 
 
 TODO:
-- diff in revenues by shop/date_block_num rather than raw
-- try using only pairs present in test data rather than all pair for each month
 - could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
 - create trend features (e.g. via moving averages)
 - can bin some features and treate them as categorical
 - use daily data to generate on_sale flag 
   (e.g. price change in last 10 days more than x %)
 - keep NaNs in price data?
-- function to remove NaNs
 - function to drop columns
 """
 
@@ -35,12 +33,12 @@ TODO:
 # setup
 ###################
 
-DEBUG = False  # if true take only subset of data to speed up computations
+DEBUG = True  # if true take only subset of data to speed up computations
 lags = [1, 2, 3, 6, 12]
 
 ts = time.time()
 pd.set_option('display.max_columns', 20)
-pd.set_option('display.max_rows', 100)
+pd.set_option('display.max_rows', 20)
 
 # paths
 ROOT = os.path.abspath('')
@@ -75,9 +73,7 @@ test.loc[test['shop_id'] == 10, 'shop_id'] = 11
 ###################
 
 keys = ['date_block_num', 'shop_id', 'item_id']
-df = train.groupby(keys, as_index=False).agg({
-	'item_cnt_day':'sum',
-	'item_price':'mean'})
+df = train.groupby(keys, as_index=False).agg({'item_cnt_day':'sum'})
 df.rename(columns={'item_cnt_day':'item_cnt_month'}, inplace=True)
 
 # shrink data size for debugging
@@ -135,10 +131,6 @@ tmp = {'date_block_num':np.arange(34), 'date':tmp[0:34]}
 tmp = pd.DataFrame(tmp)
 df = pd.merge(df, tmp, on='date_block_num', how='left')
 
-# winsorize price data to get rid of outlier in EDA
-df['item_price'] = stats.mstats.winsorize(df.item_price, limits=(0,0.01))
-df = df.rename(columns={'item_price': 'price'})
-
 # append test set to train set to make lag creation easier
 test['date_block_num'] = 34
 test['date'] = "31.10.2015"
@@ -160,12 +152,6 @@ gc.collect();
 ###################
 # basic features
 ###################
-
-# revenues (in 000s)
-# NOTE: price is average price during the month
-df['revenues'] = df['price'] * df['item_cnt_month'] / 1000
-df = make_lags(df, ['revenues'], [1])
-df = df.drop('revenues', axis=1)
 
 # item category id
 items = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -215,19 +201,19 @@ df = downcast(df)
 
 # delete stuff we don't need anymore
 del items, cats, shops
-gc.collect()
+gc.collect();
 
 ###################
 # price features 
 ###################
 
 # global average price by item 
-global_avg = df.groupby('item_id', as_index=False).agg({'price': 'mean'})
-global_avg = global_avg.rename(columns={'price': 'price_global_avg'})
+global_avg = train.groupby('item_id', as_index=False).agg({'item_price': 'mean'})
+global_avg = global_avg.rename(columns={'item_price': 'price_global_avg'})
 
 # monthly average price by item and 6 month lags
-month_avg = df.groupby(['item_id', 'date_block_num'], as_index=False).agg({'price': 'mean'})
-month_avg = month_avg.rename(columns={'price': 'price_month_avg'})
+month_avg = train.groupby(['item_id', 'date_block_num'], as_index=False).agg({'item_price': 'mean'})
+month_avg = month_avg.rename(columns={'item_price': 'price_month_avg'})
 month_avg = make_lags_by(df=month_avg, 
 				   cols=['price_month_avg'], 
 				   lags=[1,2,3,4,5,6], 
@@ -271,9 +257,6 @@ month_avg = month_avg[[
 	'price_month_avg_diff_global_avg']]
 df = pd.merge(df, month_avg, on=['date_block_num', 'item_id'], how='left')
 
-# delta compared to other shops
-df['price_vs_month_avg'] = df['price'] / df['price_month_avg'] - 1 
-
 # downcast to 8- / 16- / 32- bit where possible
 df = downcast(df)
 
@@ -281,8 +264,7 @@ df = downcast(df)
 to_lag = [
 	'price_month_avg_diff_prev_month',
 	'price_month_avg_diff_last_six_month',
-	'price_month_avg_diff_global_avg',
-	'price_vs_month_avg']
+	'price_month_avg_diff_global_avg']
 df = make_lags_by(df=df, cols=to_lag, lags=[1], 
 	time_idx=['date_block_num'], by=['shop_id','item_id'])
 df = df.drop(to_lag, axis=1)

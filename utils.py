@@ -110,7 +110,7 @@ def export_xgb_model(out_folder, model, features, preds):
  		'_score_' + str(model.best_score)
 	folder = out_folder + '/' + sub_id
 	os.mkdir(folder)
-	print('\n---- ' + sub_id + '----')
+	print('\n---- ' + sub_id + ' ----')
 
 	# export stuff
 	features = pd.DataFrame(features)
