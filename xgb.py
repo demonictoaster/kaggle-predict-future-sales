@@ -8,27 +8,23 @@ import seaborn as sns
 from xgboost import XGBRegressor
 from xgboost import plot_importance
 
-from utils import print_columns_sorted, plot_xgb_feature_importance
+from utils import *
 
 """
 Gradient boosted decision tree
 
 TODO: 
-- export some kind of log along with predictions to save param values
 - hyperparameter tuning
 - try different early stopping methods
-- save best model for ensembling 
 - for feature selection, can feed everything in a random forest and
   choose by feature importance
-- make parameter files
-- item_type_id weird importance
 """
 
 ###################
 # setup
 ###################
 
-DEBUG = False  # if true take only subset of data to speed up computations
+DEBUG = True  # if true take only subset of data to speed up computations
 PLOTS = False  # display figures
 
 pd.set_option('display.max_columns', 20)
@@ -37,6 +33,7 @@ pd.set_option('display.max_rows', 20)
 # paths
 ROOT = os.path.abspath('')
 DATA_FOLDER = ROOT + '/data'
+OUT_FOLDER = ROOT + '/out/xgb'
 
 # import data
 #df = pd.read_pickle(os.path.join(DATA_FOLDER, 'df.pkl'))
@@ -134,7 +131,8 @@ model = XGBRegressor(
     min_child_weight=300, 
     colsample_bytree=0.8, 
     subsample=0.8, 
-    eta=0.3,    
+    eta=0.3,
+    n_jobs=4,    
     seed=12)
 
 # train
@@ -182,4 +180,4 @@ submission = pd.DataFrame({
 submission.sort_values(by='ID', inplace=True)
 
 if DEBUG==False:
-	submission.to_csv(os.path.join(DATA_FOLDER, 'submission.csv'), index=False)
+	export_xgb_model(OUT_FOLDER, model, cols_to_use, submission)

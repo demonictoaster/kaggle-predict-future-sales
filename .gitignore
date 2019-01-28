@@ -1,7 +1,7 @@
 __pycache__/
-.ipynb_checkpoints/
 data/
 papers/
+stuff/
 train.buffer
 final_project.ipynb
 final_project.py

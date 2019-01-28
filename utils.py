@@ -1,3 +1,7 @@
+import datetime
+import os
+import pickle
+
 import numpy as np
 import pandas as pd
 
@@ -17,6 +21,7 @@ A bunch of functions used for feature generation:
  - make_lags_by): create lagged values for specified cols
 				  (time_idx and group_by to be specified manually)
  - print_columns_sorted(): prints column names conveniently
+ - export_xgb_model(): saves XGBoost model to folder along with useful info
 
 """
 
@@ -97,3 +102,20 @@ def plot_xgb_feature_importance(booster,feature_names):
 	plt.subplots_adjust(left=0.25, bottom=0.1, right=0.9, 
 						top=0.9, wspace=0.05, hspace=0.05)
 	plt.show()
+
+def export_xgb_model(out_folder, model, features, preds):
+	# create folder
+	today = datetime.datetime.now()
+	folder = out_folder + '/' + today.strftime('%y%m%d') + \
+		'_' + today.strftime("%H%M") + '_score_' + str(model.best_score)
+	os.mkdir(folder)
+
+	# export stuff
+	features = pd.DataFrame(features)
+	features.to_csv(os.path.join(folder, 'features.csv'), index=False, header=False)
+
+	params = pd.DataFrame(model.get_params(), index=[0]).T
+	params.to_csv(os.path.join(folder, 'params.csv'), header=False)
+
+	model.save_model(os.path.join(folder, 'model.model'))
+	preds.to_csv(os.path.join(folder, 'submission.csv'), index=False)
