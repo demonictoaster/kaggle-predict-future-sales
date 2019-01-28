@@ -19,7 +19,6 @@ NOTE:
   (I would not have spotted the small Russian language subtleties!) 
 
 TODO:
-- check negative item prices (fill with median by block_id, shop_id and item_id)
 - diff in revenues by shop/date_block_num rather than raw
 - try using only pairs present in test data rather than all pair for each month
 - could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
@@ -59,7 +58,8 @@ train = train[train['item_price'] < 100000]
 train = train[train['item_cnt_day'] < 1001]
 
 # for item with price<0, fill with median (of item on that month)
-med = train.loc[(train['date_block_num']==4) & (train['item_id']==2973), 'item_cnt_day'].median()
+med = train.loc[(train['date_block_num']==4) & (train['shop_id']==32) & \
+	(train['item_id']==2973), 'item_cnt_day'].median()
 train.loc[train['item_price']<0, 'item_price'] = med
 
 # fix duplicated shops

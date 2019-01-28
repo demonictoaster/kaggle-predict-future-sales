@@ -106,9 +106,11 @@ def plot_xgb_feature_importance(booster,feature_names):
 def export_xgb_model(out_folder, model, features, preds):
 	# create folder
 	today = datetime.datetime.now()
-	folder = out_folder + '/' + today.strftime('%y%m%d') + \
-		'_' + today.strftime("%H%M") + '_score_' + str(model.best_score)
+	sub_id = today.strftime('%y%m%d') + '_' + today.strftime("%H%M") + \
+ 		'_score_' + str(model.best_score)
+	folder = out_folder + '/' + sub_id
 	os.mkdir(folder)
+	print('\n---- ' + sub_id + '----')
 
 	# export stuff
 	features = pd.DataFrame(features)

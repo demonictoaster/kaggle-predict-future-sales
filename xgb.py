@@ -24,7 +24,7 @@ TODO:
 # setup
 ###################
 
-DEBUG = True  # if true take only subset of data to speed up computations
+DEBUG = False  # if true take only subset of data to speed up computations
 PLOTS = False  # display figures
 
 pd.set_option('display.max_columns', 20)
@@ -76,14 +76,14 @@ cols_to_use = [
 	'item_cnt_month_l6',
 	'item_id',
 	'item_id_month_avg_l1',
-	# 'item_id_month_avg_l12',
+	'item_id_month_avg_l12',
 	'item_id_month_avg_l2',
 	'item_id_month_avg_l3',
-	# 'item_id_month_avg_l6',
+	'item_id_month_avg_l6',
 	'item_shop_sold_since',
 	'item_sold_since',
 	'item_subtype_id',
-	# 'item_type_id',
+	'item_type_id',
 	'item_vs_city_month_avg_l1',
 	'month',
 	'month_avg_l1',
@@ -93,15 +93,15 @@ cols_to_use = [
 	# 'price_month_avg',
 	'price_month_avg_diff_global_avg_l1',
 	# 'price_month_avg_diff_last_six_month_l1',
-	'price_month_avg_diff_prev_month_l1',
+	# 'price_month_avg_diff_prev_month_l1',
 	# 'price_vs_month_avg_l1',
 	# 'revenues_l1',
 	'shop_id',
 	'shop_id_month_avg_l1',
-	# 'shop_id_month_avg_l12',
-	# 'shop_id_month_avg_l2',
-	# 'shop_id_month_avg_l3',
-	# 'shop_id_month_avg_l6',
+	'shop_id_month_avg_l12',
+	'shop_id_month_avg_l2',
+	'shop_id_month_avg_l3',
+	'shop_id_month_avg_l6',
 	'shop_vs_cat_month_avg_l1',
 	# 'shop_vs_city_month_avg_l1',
 	# 'shop_vs_item_month_avg_l1',
