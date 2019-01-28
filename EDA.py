@@ -17,6 +17,23 @@ DATA_FOLDER = ROOT + '/data'
 train = pd.read_pickle(os.path.join(DATA_FOLDER, 'train.pkl'))
 test = pd.read_pickle(os.path.join(DATA_FOLDER, 'test.pkl'))
 
+###################
+# EDA on daily data
+###################
+
+train.item_cnt_day.describe()  # negative sales
+train.item_price.describe()  # negative prices
+
+# two item_cnt outliers
+sns.set(color_codes=True)
+sns.boxplot(train.item_cnt_day)
+plt.show()
+
+# one item_price outlier
+sns.set(color_codes=True)
+sns.boxplot(train.item_price)
+plt.show()
+
 # aggregate to monthly data
 keys = ['date_block_num', 'shop_id', 'item_id']
 df = train.groupby(keys, as_index=False).agg({
@@ -25,7 +42,7 @@ df = train.groupby(keys, as_index=False).agg({
 df.rename(columns={'item_cnt_day':'item_cnt_month'}, inplace=True)
 
 ###################
-# EDA
+# EDA on monthly data
 ###################
 
 # all shops in test are in train but not all items 
@@ -39,7 +56,6 @@ df.item_id.value_counts()
 test.item_id.value_counts()  # same number of observations for each item in test set!
 
 # check outliers in item_cnt (-> some outliers!)
-sns.set(color_codes=True)
 sns.boxplot(df.item_cnt_month)
 plt.show()
 

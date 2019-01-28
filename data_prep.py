@@ -15,6 +15,8 @@ from utils import *
 NOTE:
 - test set consists simply of all unique shop_id/item_id combinations (for that 
   specific month). Hence should format our train data accordingly. 
+- some of the data prep tricks were found in some kaggle kernels 
+  (I would not have spotted the small Russian language subtleties!) 
 
 TODO:
 - check negative item prices (fill with median by block_id, shop_id and item_id)
@@ -39,20 +41,39 @@ lags = [1, 2, 3, 6, 12]
 
 ts = time.time()
 pd.set_option('display.max_columns', 20)
-pd.set_option('display.max_rows', 20)
+pd.set_option('display.max_rows', 100)
 
 # paths
 ROOT = os.path.abspath('')
 DATA_FOLDER = ROOT + '/data'
 
 ###################
-# data import and monthly aggregation
+# data import and cleaning
 ###################
 
 train = pd.read_pickle(os.path.join(DATA_FOLDER, 'train.pkl'))
 test = pd.read_pickle(os.path.join(DATA_FOLDER, 'test.pkl'))
 
-# aggregate to monthly data
+# remove outliers in item_cnt and price
+train = train[train['item_price'] < 100000]
+train = train[train['item_cnt_day'] < 1001]
+
+# for item with price<0, fill with median (of item on that month)
+med = train.loc[(train['date_block_num']==4) & (train['item_id']==2973), 'item_cnt_day'].median()
+train.loc[train['item_price']<0, 'item_price'] = med
+
+# fix duplicated shops
+train.loc[train['shop_id'] == 0, 'shop_id'] = 57
+test.loc[test['shop_id'] == 0, 'shop_id'] = 57
+train.loc[train['shop_id'] == 1, 'shop_id'] = 58
+test.loc[test['shop_id'] == 1, 'shop_id'] = 58
+train.loc[train['shop_id'] == 10, 'shop_id'] = 11
+test.loc[test['shop_id'] == 10, 'shop_id'] = 11
+
+###################
+# monthly aggregation
+###################
+
 keys = ['date_block_num', 'shop_id', 'item_id']
 df = train.groupby(keys, as_index=False).agg({
 	'item_cnt_day':'sum',
@@ -165,6 +186,8 @@ df = pd.merge(df, cats, on='item_category_id', how='left')
 # (found this on kaggle)
 shops = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))	
 shops['city'] = shops['shop_name'].str.split().str.get(0)
+shops.loc[shops.city == '!Якутск', 'city'] = 'Якутск'
+
 df = pd.merge(df, shops.drop('shop_name', axis=1), on='shop_id', how='left')
 df['city_id'], _ = pd.factorize(df['city'])  # label encoding
 df = df.drop('city', axis=1)
