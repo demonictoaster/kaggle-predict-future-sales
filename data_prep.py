@@ -231,9 +231,6 @@ tmp = train.groupby(keys, as_index=False).agg({'price_diff':'sum',
 df = pd.merge(df, tmp, on=keys, how='left')
 
 df = make_lags(df, ['price_diff', 'price_diff_eom', 'price_diff_eom_flag'], [1])
-df['price_diff'].fillna(0, inplace=True)
-df['price_diff_eom'].fillna(0, inplace=True)
-df['price_diff_eom_flag'].fillna(-1, inplace=True)
 df = df.drop(['price_diff', 'price_diff_eom', 'price_diff_eom_flag'], axis=1)
 
 # delete stuff we don't need anymore

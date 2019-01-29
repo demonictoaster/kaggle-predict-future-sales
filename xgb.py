@@ -1,6 +1,8 @@
 import os
+import pprint
 import time
 
+from hyperopt import fmin, tpe, hp
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -14,10 +16,9 @@ from utils import *
 Gradient boosted decision tree
 
 TODO: 
-- hyperparameter tuning
-- try different early stopping methods
 - for feature selection, can feed everything in a random forest and
   choose by feature importance
+- whether we fillna for some variables seems to have an impact (e.g. price_diff)
 """
 
 ###################
@@ -25,7 +26,10 @@ TODO:
 ###################
 
 DEBUG = False  # if true take only subset of data to speed up computations
+PARAM_OPT = False
 PLOTS = False  # display figures
+
+param_opt_max_eval = 100
 
 pd.set_option('display.max_columns', 20)
 pd.set_option('display.max_rows', 20)
@@ -90,8 +94,8 @@ cols_to_use = [
 	# 'n_days_in_month',
 	# 'pair_not_in_train',
 	'price_diff_l1',
-	'price_diff_eom_l1',
-	'price_diff_eom_flag_l1',
+	# 'price_diff_eom_l1',
+	# 'price_diff_eom_flag_l1',
 	# 'price_month_avg',
 	'price_month_avg_diff_global_avg_l1',
 	# 'price_month_avg_diff_last_six_month_l1',
@@ -106,7 +110,7 @@ cols_to_use = [
 	# 'shop_vs_city_month_avg_l1',
 	# 'shop_vs_item_month_avg_l1',
 	# 'year'
-	]
+]
 
 # show features we will use for training
 df[cols_to_use].info()
@@ -120,7 +124,66 @@ Y_val = df.loc[df['date_block_num'] == 33]['item_cnt_month']
 X_test = df.loc[df['date_block_num'] == 34, cols_to_use]
 
 ###################
-# training 
+# hyper-param optimization 
+###################
+
+if PARAM_OPT == True:
+	ts = time.time()
+	param = {
+		'max_depth': 8,
+		'min_child_weight': 300,
+		'gamma': 0.8,
+		'colsample_bytree': 0.8,
+		'subsample': 0.8,
+		'eta': 0.3}
+
+	def xgb_loss(param):
+		model = XGBRegressor(
+			max_depth=param['max_depth'],
+		    min_child_weight=param['min_child_weight'], 
+		    gamma=param['gamma'],
+		    colsample_bytree=param['colsample_bytree'], 
+		    subsample=param['subsample'], 
+		    eta=param['eta'],
+		    n_estimators=1000,
+		    n_jobs=4,    
+		    seed=12)
+
+		model.fit(
+		    X_train, 
+		    Y_train, 
+		    eval_metric="rmse", 
+		    eval_set=[(X_train, Y_train), (X_val, Y_val)], 
+		    verbose=False, 
+		    early_stopping_rounds = 10)
+
+		loss = model.best_score
+		print('Fitted XGB using params:')
+		pprint.pprint(param)
+		print('\n--> Score = {0}'.format(loss))
+		print('-----------------------------')
+		return loss
+
+	def xgb_hyperopt():
+	    space = {
+		    'max_depth':  		hp.choice('max_depth', np.arange(1, 14, dtype=int)),
+		    'min_child_weight': hp.quniform('min_child_weight', 1, 6, 1),
+		    'gamma': 			hp.quniform('gamma', 0.5, 1, 0.05),
+		    'colsample_bytree': hp.quniform('colsample_bytree', 0.5, 1, 0.05),
+		    'subsample': 		hp.quniform('subsample', 0.5, 1, 0.05),
+		    'eta': 				hp.quniform('eta', 0.025, 0.5, 0.025)}
+
+	    best = fmin(xgb_loss, space, algo=tpe.suggest, max_evals=param_opt_max_eval)
+	    return best
+
+	best_model = xgb_hyperopt()
+	print('Best model:')
+	pprint.pprint(best_model)
+	spent = str(np.round((time.time() - ts) / 60, 2))
+	print('\n---- Execution time: ' + spent + " min ----")
+
+###################
+# final model 
 ###################
 
 # define model
