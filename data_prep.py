@@ -34,7 +34,7 @@ TODO:
 # setup
 ###################
 
-DEBUG = True  # if true take only subset of data to speed up computations
+DEBUG = False  # if true take only subset of data to speed up computations
 lags = [1, 2, 3, 6, 12]
 
 ts = time.time()
@@ -205,7 +205,7 @@ del items, cats, shops
 gc.collect();
 
 ###################
-# price features 
+# on sale flag
 ###################
 
 # price changes (take log returns so can sum returns for aggregation)
@@ -223,7 +223,26 @@ train['price_diff'].fillna(0, inplace=True)
 # (assumption is that price cuts will matter only in the next few days)
 train['day'] = pd.to_numeric(train['date'].astype(str).str[:2])
 train['price_diff_eom'] = np.where(train['day'] > 24, train['price_diff'], 0)
+train['price_diff_eom_flag'] = np.where(train['price_diff_eom'] < -0.2, 1, -1)
 
+tmp = train.groupby(keys, as_index=False).agg({'price_diff':'sum', 
+											   'price_diff_eom': 'sum',
+											   'price_diff_eom_flag': 'max'})
+df = pd.merge(df, tmp, on=keys, how='left')
+
+df = make_lags(df, ['price_diff', 'price_diff_eom', 'price_diff_eom_flag'], [1])
+df['price_diff'].fillna(0, inplace=True)
+df['price_diff_eom'].fillna(0, inplace=True)
+df['price_diff_eom_flag'].fillna(-1, inplace=True)
+df = df.drop(['price_diff', 'price_diff_eom', 'price_diff_eom_flag'], axis=1)
+
+# delete stuff we don't need anymore
+del tmp
+gc.collect(); 
+
+###################
+# price features 
+###################
 
 # global average price by item 
 global_avg = train.groupby('item_id', as_index=False).agg({'item_price': 'mean'})
