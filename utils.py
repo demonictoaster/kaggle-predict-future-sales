@@ -88,9 +88,8 @@ def print_columns_sorted(df):
 	for col in cols:
 		print('\'' + col + '\'' + ',')
 
-def plot_xgb_feature_importance(booster,feature_names):
+def plot_feature_importance(importance,feature_names):
 	features = feature_names
-	importance = booster.feature_importances_
 	to_plot = pd.DataFrame({'features': features, 'importance': importance})
 	to_plot.sort_values('importance', ascending=False, inplace=True)
 	sns.set(font_scale=0.8)

@@ -29,7 +29,7 @@ DEBUG = False  # if true take only subset of data to speed up computations
 PARAM_OPT = False
 PLOTS = False  # display figures
 
-param_opt_max_eval = 100
+param_opt_max_eval = 30  # 30 evals ~ 240min  
 
 pd.set_option('display.max_columns', 20)
 pd.set_option('display.max_rows', 20)
@@ -112,9 +112,6 @@ cols_to_use = [
 	# 'year'
 ]
 
-# show features we will use for training
-df[cols_to_use].info()
-
 # NOTE: train/val split is done consistently with train/test split 
 # -> take last month of train data as validation set
 X_train = df.loc[df['date_block_num'] < 33, cols_to_use]
@@ -128,14 +125,8 @@ X_test = df.loc[df['date_block_num'] == 34, cols_to_use]
 ###################
 
 if PARAM_OPT == True:
+
 	ts = time.time()
-	param = {
-		'max_depth': 8,
-		'min_child_weight': 300,
-		'gamma': 0.8,
-		'colsample_bytree': 0.8,
-		'subsample': 0.8,
-		'eta': 0.3}
 
 	def xgb_loss(param):
 		model = XGBRegressor(
@@ -158,6 +149,7 @@ if PARAM_OPT == True:
 		    early_stopping_rounds = 10)
 
 		loss = model.best_score
+
 		print('Fitted XGB using params:')
 		pprint.pprint(param)
 		print('\n--> Score = {0}'.format(loss))
@@ -166,21 +158,25 @@ if PARAM_OPT == True:
 
 	def xgb_hyperopt():
 	    space = {
-		    'max_depth':  		hp.choice('max_depth', np.arange(1, 14, dtype=int)),
-		    'min_child_weight': hp.quniform('min_child_weight', 1, 6, 1),
-		    'gamma': 			hp.quniform('gamma', 0.5, 1, 0.05),
-		    'colsample_bytree': hp.quniform('colsample_bytree', 0.5, 1, 0.05),
-		    'subsample': 		hp.quniform('subsample', 0.5, 1, 0.05),
-		    'eta': 				hp.quniform('eta', 0.025, 0.5, 0.025)}
+		    'max_depth':  		hp.choice('max_depth', np.arange(3, 14, dtype=int)),
+		    'min_child_weight': hp.quniform('min_child_weight', 1, 500, 1),
+		    'gamma': 			hp.uniform('gamma', 0.5, 1),
+		    'colsample_bytree': hp.uniform('colsample_bytree', 0.3, 1),
+		    'subsample': 		hp.uniform('subsample', 0.5, 1),
+		    'eta': 				hp.uniform('eta', 0.025, 0.5)}
 
 	    best = fmin(xgb_loss, space, algo=tpe.suggest, max_evals=param_opt_max_eval)
 	    return best
 
 	best_model = xgb_hyperopt()
+
+	best_model = pd.DataFrame(best_model, index=[0]).T
+	best_model.to_csv(os.path.join(OUT_FOLDER, 'xgb_best_params.csv'), header=False)
+
 	print('Best model:')
-	pprint.pprint(best_model)
+	print(best_model)
 	spent = str(np.round((time.time() - ts) / 60, 2))
-	print('\n---- Execution time: ' + spent + " min ----")
+	print('\nExecution time: ' + spent + " min")
 
 ###################
 # final model 
@@ -188,12 +184,13 @@ if PARAM_OPT == True:
 
 # define model
 model = XGBRegressor(
-	max_depth=8,
+	max_depth=10,
+    min_child_weight=253, 
+    colsample_bytree=0.3897456809372704,
+    gamma= 0.7828899186782605,
+    subsample=0.9354037105377694, 
+    eta=0.40208399305883596,
     n_estimators=1000,
-    min_child_weight=300, 
-    colsample_bytree=0.8, 
-    subsample=0.8, 
-    eta=0.3,
     n_jobs=4,    
     seed=12)
 
@@ -218,7 +215,8 @@ os.system('say "Training over"')
 
 if PLOTS==True:
 	# plot feature importance
-	plot_xgb_feature_importance(model, cols_to_use)
+	importance = model.feature_importances_
+	plot_feature_importance(importance, cols_to_use)
 
 	# plot loss curves
 	loss = model.evals_result()
