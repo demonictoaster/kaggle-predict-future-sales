@@ -3,6 +3,8 @@ data/
 out/
 papers/
 stuff/
+LightGBM/
 train.buffer
 final_project.ipynb
 final_project.py
+pca.py

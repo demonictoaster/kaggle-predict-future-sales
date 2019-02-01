@@ -8,6 +8,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import KFold
+from sklearn.metrics import mean_squared_error
+
 
 """
 
@@ -21,7 +23,11 @@ A bunch of functions used for feature generation:
  - make_lags_by): create lagged values for specified cols
 				  (time_idx and group_by to be specified manually)
  - print_columns_sorted(): prints column names conveniently
+ - plot_feature_importance(): plot feature importances of tree-based model
+ - make_submission(): create submission file from test predictions
  - export_xgb_model(): saves XGBoost model to folder along with useful info
+ - freq_encoding(): frequency encoding of categorical features
+ - get_rmse(): root mean square error
 
 """
 
@@ -102,21 +108,40 @@ def plot_feature_importance(importance,feature_names):
 						top=0.9, wspace=0.05, hspace=0.05)
 	plt.show()
 
-def export_xgb_model(out_folder, model, features, preds):
+def make_submission(ids, pred):
+	submission = pd.DataFrame({'ID': ids.astype(np.int64), 'item_cnt_month': pred})
+	submission.sort_values(by='ID', inplace=True)
+	return submission
+
+def export_model(out_folder, score, features, params, pred_val, pred_test, submission):
 	# create folder
 	today = datetime.datetime.now()
 	sub_id = today.strftime('%y%m%d') + '_' + today.strftime("%H%M") + \
- 		'_score_' + str(model.best_score)
+ 		'_score_' + str(score)
 	folder = out_folder + '/' + sub_id
 	os.mkdir(folder)
 	print('\n---- ' + sub_id + ' ----')
 
-	# export stuff
+	# format stuff
 	features = pd.DataFrame(features)
+	params = pd.DataFrame(params, index=[0]).T
+	pred_val = pd.DataFrame(pred_val)
+	pred_test = pd.DataFrame(pred_test)
+
+	# export stuff
 	features.to_csv(os.path.join(folder, 'features.csv'), index=False, header=False)
-
-	params = pd.DataFrame(model.get_params(), index=[0]).T
 	params.to_csv(os.path.join(folder, 'params.csv'), header=False)
+	pred_val.to_csv(os.path.join(folder, 'pred_val.csv'), index=False, header=False)
+	pred_test.to_csv(os.path.join(folder, 'pred_test.csv'), index=False, header=False)
+	submission.to_csv(os.path.join(folder, 'submission.csv'), index=False)
 
-	model.save_model(os.path.join(folder, 'model.model'))
-	preds.to_csv(os.path.join(folder, 'submission.csv'), index=False)
+def freq_encoding(df, cat):
+	enc = df.groupby(cat).size()
+	enc = enc/len(df)
+	df[cat + '_freq'] = df[cat].map(enc)
+	return df
+
+def get_rmse(model, X, Y_true):
+	Y_pred = model.predict(X)
+	rmse = np.sqrt(mean_squared_error(Y_true, Y_pred))
+	return rmse

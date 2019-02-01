@@ -24,10 +24,7 @@ TODO:
 - could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
 - create trend features (e.g. via moving averages)
 - can bin some features and treate them as categorical
-- use daily data to generate on_sale flag 
-  (e.g. price change in last 10 days more than x %)
-- keep NaNs in price data?
-- function to drop columns
+- parameter file
 """
 
 ###################
