@@ -16,7 +16,7 @@ from utils import *
 Gradient boosted decision tree (XGBoost implementation)
 
 TODO: 
-- whether we fillna for some variables seems to have an impact (e.g. price_diff)
+- 
 """
 
 ###################

@@ -10,7 +10,7 @@ from sklearn.metrics import mean_squared_error
 from utils import make_submission
 
 """
-Simple ensembling using a convex combination of two models
+ensembling using a convex combination of two models
 
 TODO: 
 - 

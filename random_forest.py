@@ -15,8 +15,13 @@ from utils import *
 """
 Random forest
 
+NOTE:
+- not used for final solution (ends up not being useful for ensembling since
+  performance is not good enough and correlation of predictions with gradient
+  boosted model is too high)
+
 TODO: 
-- hyperparameter tuning
+- 
 """
 
 ###################
