@@ -21,10 +21,7 @@ NOTE:
   (I would not have spotted the small Russian language subtleties!) 
 
 TODO:
-- could experiment with groupings (e.g. items that sell a lot, or the ones that sell not much)
-- create trend features (e.g. via moving averages)
-- can bin some features and treate them as categorical
-- parameter file
+-
 """
 
 ###################
@@ -106,7 +103,6 @@ df['item_cnt_month'].fillna(0, inplace=True)
 # original train data (across all months). 
 # We can use this as a feature. Intuition is that shop probably doesn't
 # sell the item if pair not present. 
-# TODO: use full train set to for final submission
 pairs_in_train = train.loc[train['date_block_num'] < 33, ['shop_id', 'item_id']].drop_duplicates(keep='first')
 df = pd.merge(df, pairs_in_train, on=['shop_id', 'item_id'], how='left', indicator=True)
 df.rename(columns={'_merge':'pair_not_in_train'}, inplace=True)
@@ -137,7 +133,7 @@ df = pd.concat([df, test], ignore_index=True, sort=False,
 df['ID'].fillna(-999, inplace=True)  # to be able to convert to integer
 df['ID'] = df['ID'].astype(np.int32)
 
-# downcast to 8- / 16- / 32- bit where possible
+# downcast to 16- / 32- bit where possible
 df = downcast(df)
 
 # lag item_cnt_month and item_price
@@ -309,8 +305,6 @@ for col in cols:
 del global_avg, month_avg, to_lag
 gc.collect();
 
-
-
 ###################
 # mean encoding
 ###################
@@ -331,8 +325,6 @@ target = 'item_cnt_month'
 train_idx = df['date_block_num'].isin(np.arange(0, 33))
 k = 5
 
-# df = mean_encoding(df, cols_to_mean_encode, target, train_idx)  # no regularization
-# df = mean_encoding_kfold(df, cols_to_mean_encode, target, train_idx, k=5)  # over k-folds
 df = mean_encoding_month(df, cols_to_mean_encode)
 df = make_lags(df, [col + '_month_avg' for col in cols_to_mean_encode], lags)
 
@@ -400,7 +392,7 @@ for col in df.columns:
 		df[col].fillna(0, inplace=True)
 
 # remove periods for which lags cannot be computed (date_block_num starts at 0)
-# NOTE: lose 12 months of data if maxlag=12, might not be worth to include
+# NOTE: lose 12 months of data if maxlag=12, which is quite a lot
 df = df[df['date_block_num'] >= max(lags)]
 
 # write dataframe to folder
@@ -413,4 +405,3 @@ if DEBUG==False:
 # execution time
 spent = str(np.round((time.time() - ts) / 60, 2))
 print('\n---- Execution time: ' + spent + " min ----")
-os.system('say "Data prep over"');

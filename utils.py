@@ -13,7 +13,7 @@ from sklearn.metrics import mean_squared_error
 
 """
 
-A bunch of functions used for feature generation:
+A bunch of functions used for feature generation, model exports, etc.:
 
  - downcast(): downcast numerical dtypes to smallest possible
  - mean_encoding(): mean encoding without regularization
